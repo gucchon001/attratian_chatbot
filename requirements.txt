@@ -1,0 +1,24 @@
+# Core framework
+streamlit>=1.35.0
+langchain>=0.2.0
+langchain-google-genai>=1.0.0
+
+# Google Gemini API (direct access)
+google-generativeai>=0.8.0
+
+# External API integrations
+atlassian-python-api>=3.41.0
+requests>=2.31.0
+
+# Configuration and environment
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Development and testing (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.7.0
+flake8>=6.0.0
+
+# Logging and monitoring
+structlog>=23.1.0 
