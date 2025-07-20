@@ -22,6 +22,7 @@ sys.path.insert(0, str(project_root))
 from src.spec_bot_mvp.core.agent import SpecBotAgent
 from src.spec_bot_mvp.config.settings import settings
 from src.spec_bot_mvp.tools.confluence_tool import get_confluence_page_hierarchy
+from src.spec_bot_mvp.tools.confluence_enhanced_cql_search import get_detailed_process_info
 from src.spec_bot_mvp.ui.hierarchy_filter_ui import HierarchyFilterUI
 from src.spec_bot_mvp.utils.process_tracker import StreamlitProcessDisplay, ProcessStage
 
@@ -605,6 +606,68 @@ def render_main_chat():
                     # === 1. 統合された思考プロセス（ストリーミング + ProcessTracker）===
                     with st.expander("🔍 思考プロセス（詳細検索実行中）", expanded=True):
                         
+                        # CQL検索詳細プロセス表示コンテナ
+                        cql_process_container = st.empty()
+                        
+                        # CQL検索詳細情報を取得・表示（新機能）
+                        def display_cql_process_details(query: str):
+                            """CQL検索プロセスの詳細をリアルタイム表示"""
+                            try:
+                                # CQL検索詳細プロセス情報を取得
+                                process_info = get_detailed_process_info(query)
+                                
+                                with cql_process_container.container():
+                                    st.markdown("### 🔍 **CQL検索プロセス詳細**")
+                                    
+                                    # キーワード抽出結果
+                                    if "extracted_keywords" in process_info:
+                                        st.markdown("#### 🔤 **キーワード抽出 (Gemini 2.0-flash)**")
+                                        keywords = process_info["extracted_keywords"]
+                                        if keywords:
+                                            keyword_display = ", ".join([f"`{kw}`" for kw in keywords])
+                                            st.markdown(f"**抽出キーワード**: {keyword_display}")
+                                        else:
+                                            st.warning("キーワード抽出結果がありません")
+                                    
+                                    # CQLクエリ詳細
+                                    if "process_details" in process_info:
+                                        st.markdown("#### 🗂️ **CQLクエリ生成プロセス**")
+                                        details = process_info["process_details"]
+                                        
+                                        for i, detail in enumerate(details, 1):
+                                            with st.expander(f"Strategy {i}: {detail.get('strategy', 'Unknown')}", expanded=(i==1)):
+                                                st.code(detail.get('cql_query', 'クエリ情報なし'), language='sql')
+                                                st.caption(f"結果件数: {detail.get('result_count', 0)}件")
+                                    
+                                    # 検索実行統計
+                                    if "total_results" in process_info:
+                                        st.markdown("#### 📊 **検索結果統計**")
+                                        col1, col2, col3 = st.columns(3)
+                                        with col1:
+                                            st.metric("総結果数", process_info.get("total_results", 0))
+                                        with col2:
+                                            st.metric("実行時間", f"{process_info.get('execution_time', 0):.2f}秒")
+                                        with col3:
+                                            strategy_count = len(process_info.get("strategy_results", {}))
+                                            st.metric("実行戦略数", strategy_count)
+                                    
+                                    if "error" in process_info:
+                                        st.error(f"❌ CQL検索エラー: {process_info['error']}")
+                                
+                            except Exception as e:
+                                with cql_process_container.container():
+                                    st.error(f"❌ CQL詳細表示エラー: {str(e)}")
+                        
+                        # CQL検索詳細を表示（すべてのクエリで実行）
+                        st.markdown("### 🔍 **CQL検索プロセス詳細** (リアルタイム表示)")
+                        try:
+                            display_cql_process_details(prompt)
+                            st.success("✅ CQL検索詳細プロセス表示完了")
+                        except Exception as e:
+                            st.error(f"❌ CQL詳細表示エラー: {str(e)}")
+                            import traceback
+                            st.code(traceback.format_exc())
+                        
                         # ProcessTrackerの取得
                         try:
                             process_tracker = current_agent.get_process_tracker()
@@ -614,6 +677,21 @@ def render_main_chat():
                             process_tracker = None
                             if debug_mode:
                                 st.warning("⚠️ DEBUG: ProcessTracker取得失敗")
+                        
+                        # CQL検索詳細プロセス表示ジェネレータ
+                        def cql_detailed_process_generator():
+                            import time
+                            
+                            yield "🔄 **処理を開始しています...**\n\n"
+                            time.sleep(0.5)
+                            
+                            yield "🤖 **エージェントが思考プロセスを開始します**\n\n"
+                            time.sleep(0.5)
+                            
+                            yield "💭 **詳細な思考プロセスは下部のリアルタイム表示をご覧ください**\n\n"
+                            
+                        # CQL詳細プロセスを表示
+                        st.write_stream(cql_detailed_process_generator)
                         
                         # リアルタイム統合表示ジェネレータ
                         def integrated_real_time_generator():
@@ -817,9 +895,13 @@ def render_main_chat():
                         
                 else:
                     # 従来の方式でエージェント実行（フォールバック）
-                    with st.spinner("回答を生成中..."):
-                        response = st.session_state.agent.process_user_input(enhanced_prompt)
-                
+                    placeholder = st.empty()
+                    placeholder.text("回答を生成中...")
+                    
+                    response = st.session_state.agent.process_user_input(enhanced_prompt)
+                    
+                    placeholder.empty()
+                    
                     # 応答を表示
                     st.markdown(response)
                     

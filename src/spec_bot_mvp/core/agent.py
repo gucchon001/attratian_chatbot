@@ -1,8 +1,7 @@
 """
-仕様書作成支援ボット - LangChainエージェント
+仕様書作成支援ボット - LangChainエージェント（簡素化版）
 
-このモジュールは、ユーザーの自然言語による質問を理解し、
-適切なツールを自律的に選択・実行して回答を生成するエージェントを提供します。
+Enhanced CQL検索による詳細プロセス表示に特化したシンプルなエージェント
 """
 
 import logging
@@ -15,15 +14,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
 
 from ..config.settings import settings
-from ..config.constants import APP_CONSTANTS, prompt_manager
-from ..tools.jira_tool import search_jira_with_filters, get_jira_filter_options
-from ..tools.confluence_tool import search_confluence_tool, search_confluence_with_filters, get_confluence_space_structure
-# 削除されたツール: confluence_enhanced_search, confluence_indexer
-from ..tools.confluence_chain_search import search_confluence_with_chain_prompts
+from ..config.constants import prompt_manager
+from ..tools.jira_tool import search_jira_with_filters
 from ..tools.confluence_enhanced_cql_search import search_confluence_with_enhanced_cql
 from ..utils.log_config import get_logger
 from ..utils.process_tracker import ProcessTracker, ProcessStage, ProcessStatus
-from ..utils.streaming_callback import StreamlitStreamingCallback, ProcessDetailCallback
+from ..utils.streaming_callback import ProcessDetailCallback
 
 logger = get_logger(__name__)
 
@@ -81,8 +77,8 @@ class SpecBotAgent:
             
             self.memory = ConversationBufferMemory(
                 memory_key="chat_history",
-                return_messages=APP_CONSTANTS.LANGCHAIN.MEMORY_RETURN_MESSAGES,
-                max_token_limit=APP_CONSTANTS.LANGCHAIN.MEMORY_MAX_TOKEN_LIMIT
+                return_messages=True,
+                max_token_limit=2000  # 固定値で設定
             )
             
             logger.info("会話メモリの初期化完了")
@@ -103,69 +99,19 @@ class SpecBotAgent:
                 func=self._jira_search_wrapper
             )
             
-            # Confluence検索ツール（基本）
-            confluence_search_tool = Tool(
-                name="confluence_search", 
-                description=prompt_manager.get_tool_description("confluence_search"),
-                func=search_confluence_tool
-            )
-            
-# 削除されたツール: confluence_enhanced_search, confluence_indexed_search
-            
-            # Confluenceチェーンプロンプト検索ツール（最高精度）
-            confluence_chain_tool = Tool(
-                name="confluence_chain_search",
-                description="🧠 Confluence最高精度検索：5段階チェーンプロンプト（質問分析→キーワード最適化→検索→結果選別→回答生成）による段階的分析。ログイン機能や仕様書など、正確で詳細な情報が必要な場合に最適。議事録と仕様書を明確に区別し、事実のみに基づく厳格な回答を生成。",
-                func=search_confluence_with_chain_prompts
-            )
-            
             # Confluence高精度CQL検索ツール（検索エンジン特化）
             confluence_enhanced_cql_tool = Tool(
                 name="confluence_enhanced_cql_search",
-                description="🎯 Confluence高精度CQL検索：5戦略CQL（タイトル優先→キーワード分割→フレーズ→部分一致→フォールバック）による根本的検索精度向上。「ログイン機能の仕様」のような具体的な文書が見つからない場合に最適。従来の検索で0件だった場合の救済措置として強力。",
+                description="💯 **優先使用推奨** Confluence専用高精度検索：「ログイン機能の仕様」「API設計書」「テスト計画」など、具体的なドキュメント検索時に必ず使用。5段階CQL戦略（タイトル優先→キーワード分割→フレーズ→部分一致→フォールバック）により詳細なプロセスログと共に確実に結果を取得。Confluenceページを検索する際の第一選択ツール。",
                 func=search_confluence_with_enhanced_cql
             )
             
-            # Jiraフィルター項目取得ツール
-            jira_filter_tool = Tool(
-                name="jira_filter_options",
-                description=prompt_manager.get_tool_description("jira_filter_options"),
-                func=self._get_jira_filter_options_wrapper
-            )
-            
-            # フィルター対応Jira検索ツール
-            jira_filtered_search_tool = Tool(
-                name="jira_filtered_search",
-                description=prompt_manager.get_tool_description("jira_filtered_search"),
-                func=self._jira_filtered_search_wrapper
-            )
-            
-            # フィルター対応Confluence検索ツール
-            confluence_filtered_search_tool = Tool(
-                name="confluence_filtered_search",
-                description=prompt_manager.get_tool_description("confluence_filtered_search"),
-                func=self._confluence_filtered_search_wrapper
-            )
-            
-            # Confluenceスペース構造取得ツール
-            confluence_space_structure_tool = Tool(
-                name="confluence_space_structure",
-                description=prompt_manager.get_tool_description("confluence_space_structure"),
-                func=self._confluence_space_structure_wrapper
-            )
-            
             self.tools = [
-                confluence_search_tool,             # ★修正済み基本検索を最優先（急募機能検索対応済み）
-                confluence_enhanced_cql_tool,       # ★最高精度CQL検索
-                confluence_chain_tool,              # ★チェーンプロンプト検索
-                jira_search_tool, 
-                jira_filter_tool,
-                jira_filtered_search_tool,          
-                confluence_filtered_search_tool,    
-                confluence_space_structure_tool     
+                confluence_enhanced_cql_tool,       # ★主要機能：詳細プロセス表示付きCQL検索
+                jira_search_tool,                   # ★補助機能：基本Jira検索
             ]
             
-            logger.info(f"ツール初期化完了 - {len(self.tools)}個のツールを登録")
+            logger.info(f"✅ 簡素化完了 - {len(self.tools)}個の必須ツールのみ登録")
             
         except Exception as e:
             logger.error(f"ツール初期化失敗: {str(e)}")
@@ -192,50 +138,6 @@ class SpecBotAgent:
             logger.error(f"Jira検索エラー: {str(e)}")
             return f"Jira検索中にエラーが発生しました: {str(e)}"
     
-    def _get_jira_filter_options_wrapper(self, _: str = "") -> str:
-        """
-        Jiraフィルター項目取得ツールのラッパー関数
-        """
-        try:
-            logger.info("Jiraフィルター項目取得実行")
-            
-            filter_options = get_jira_filter_options()
-            
-            if not filter_options:
-                return "Jiraフィルター項目の取得に失敗しました。"
-            
-            # 結果を整形
-            result_lines = ["【Jiraフィルター項目】"]
-            
-            if filter_options.get('projects'):
-                projects = filter_options['projects'][:10]  # 最初の10件
-                project_names = [f"{p['key']}: {p['name']}" for p in projects]
-                result_lines.append(f"プロジェクト: {', '.join(project_names)}")
-                if len(filter_options['projects']) > 10:
-                    result_lines.append(f"  ...他{len(filter_options['projects']) - 10}件")
-            
-            if filter_options.get('statuses'):
-                statuses = filter_options['statuses'][:10]  # 最初の10件
-                status_names = [s['name'] for s in statuses]
-                result_lines.append(f"ステータス: {', '.join(status_names)}")
-                if len(filter_options['statuses']) > 10:
-                    result_lines.append(f"  ...他{len(filter_options['statuses']) - 10}件")
-            
-            if filter_options.get('issue_types'):
-                issue_types = list(set(filter_options['issue_types']))  # 重複排除
-                result_lines.append(f"チケットタイプ: {', '.join(issue_types)}")
-            
-            if filter_options.get('priorities'):
-                priorities = [p['name'] for p in filter_options['priorities']]
-                result_lines.append(f"優先度: {', '.join(priorities)}")
-            
-            logger.info("Jiraフィルター項目取得完了")
-            return "\n".join(result_lines)
-            
-        except Exception as e:
-            logger.error(f"Jiraフィルター項目取得エラー: {str(e)}")
-            return f"Jiraフィルター項目取得中にエラーが発生しました: {str(e)}"
-    
     def _initialize_agent(self):
         """ReActエージェントの初期化"""
         try:
@@ -260,12 +162,12 @@ class SpecBotAgent:
                 agent=agent,
                 tools=self.tools,
                 memory=self.memory,
-                verbose=False,  # パフォーマンス向上のためverboseを無効化
+                verbose=True,
                 handle_parsing_errors=True,
-                max_iterations=10,  # 複雑な検索に対応するためさらに増加
-                max_execution_time=120,  # 複合検索処理に十分な時間を確保（2分）
-                return_intermediate_steps=False,  # 中間ステップは返さない
-                early_stopping_method="force"  # より確実な停止
+                max_iterations=4,  # 最終回答生成に十分な回数
+                max_execution_time=90,  # 余裕を持った時間設定
+                return_intermediate_steps=False,
+                early_stopping_method="force"
             )
             
             logger.info("ReActエージェントの初期化完了")
@@ -340,43 +242,6 @@ class SpecBotAgent:
         }
 
 
-    def _jira_filtered_search_wrapper(self, query: str) -> str:
-        """
-        フィルター対応Jira検索ツールのラッパー関数
-        
-        UIで設定されたフィルター条件を自動的に適用してJira検索を実行します。
-        将来的にLLMがフィルター条件を自動解析できるよう拡張予定。
-        """
-        try:
-            logger.info(f"フィルター付きJira検索実行: query='{query}'")
-            
-            # フィルター条件を動的に取得（StreamlitのセッションステートからUIフィルターを取得）
-            # プロジェクトはCTJに固定済み、他の条件は将来的にLLM解析で抽出予定
-            
-            result = search_jira_with_filters(
-                query=query,
-                # フィルター条件は将来的にUIまたはLLMの解析結果から設定（プロジェクトはCTJ固定）
-                # status_names=None,
-                # assignee_ids=None,
-                # issue_types=None,
-                # priorities=None,
-                # reporter_ids=None,
-                # custom_tantou=None,
-                # custom_eikyou_gyoumu=None,
-                # created_after=None,
-                # created_before=None,
-                # updated_after=None,
-                # updated_before=None
-            )
-            
-            logger.info(f"フィルター付きJira検索完了")
-            return result
-            
-        except Exception as e:
-            error_msg = f"フィルター付きJira検索エラー: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
-    
     def _process_question_analysis(self, user_input: str) -> None:
         """質問解析段階の処理"""
         self.process_tracker.start_stage(ProcessStage.QUESTION_ANALYSIS, {
@@ -472,61 +337,6 @@ class SpecBotAgent:
         """プロセス追跡システムのインスタンスを取得"""
         return self.process_tracker
 
-
-    def _confluence_filtered_search_wrapper(self, query: str) -> str:
-        """
-        フィルター対応Confluence検索ツールのラッパー関数
-        
-        UIで設定されたフィルター条件を自動的に適用してConfluence検索を実行します。
-        将来的にLLMがフィルター条件を自動解析できるよう拡張予定。
-        """
-        try:
-            logger.info(f"フィルター付きConfluence検索実行: query='{query}'")
-            
-            # フィルター条件を動的に取得（StreamlitのセッションステートからUIフィルターを取得）
-            # ここでは基本実装として、引数のqueryのみを使用
-            # 将来的にはLLMがクエリからフィルター条件を抽出する機能を追加予定
-            
-            result = search_confluence_with_filters(
-                query=query,
-                # フィルター条件は将来的にUIまたはLLMの解析結果から設定
-                # space_keys=None,
-                # content_type=None,
-                # created_after=None,
-                # created_before=None
-            )
-            
-            logger.info(f"フィルター付きConfluence検索完了")
-            return result
-            
-        except Exception as e:
-            error_msg = f"フィルター付きConfluence検索エラー: {str(e)}"
-            logger.error(error_msg)
-            return error_msg 
-
-
-    def _confluence_space_structure_wrapper(self, space_key: str = "CLIENTTOMO") -> str:
-        """
-        Confluenceスペース構造取得ツールのラッパー関数
-        
-        指定されたConfluenceスペースの全体的なページ構造を取得します。
-        """
-        try:
-            logger.info(f"Confluenceスペース構造取得実行: space_key='{space_key}'")
-            
-            # スペースキーの検証・デフォルト値設定
-            if not space_key or space_key.strip() == "":
-                space_key = "CLIENTTOMO"
-            
-            result = get_confluence_space_structure(space_key.strip())
-            
-            logger.info(f"Confluenceスペース構造取得完了")
-            return result
-            
-        except Exception as e:
-            error_msg = f"Confluenceスペース構造取得エラー: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
 
     def process_input(self, user_input: str, streaming_callback=None) -> str:
         """
@@ -626,8 +436,8 @@ class SpecBotAgent:
                 process_tracker=self.process_tracker
             )
         except Exception as e:
-            logger.warning(f"ProcessDetailCallbackの作成に失敗: {e}. StreamlitStreamingCallbackを使用します。")
-            return StreamlitStreamingCallback(container=container)
+            logger.warning(f"ProcessDetailCallbackの作成に失敗: {e}")
+            return None
 
     def process_input_with_streaming(self, user_input: str, thought_container=None) -> str:
         """

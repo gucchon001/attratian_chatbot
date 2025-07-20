@@ -407,9 +407,42 @@ class StreamlitProcessDisplay:
         if "current_activity" in details:
             st.markdown(f"🔄 **{details['current_activity']}**")
         
+        # CQL検索戦略の詳細情報を表示
+        if "cql_search_details" in details:
+            cql_details = details["cql_search_details"]
+            st.markdown("🔍 **CQL検索詳細:**")
+            
+            # キーワード抽出結果
+            if "extracted_keywords" in cql_details:
+                keywords_str = " | ".join(cql_details["extracted_keywords"])
+                st.caption(f"🔤 抽出キーワード: {keywords_str}")
+            
+            # 各戦略の実行結果（最新3件）
+            if "detailed_process_log" in cql_details:
+                st.markdown("📊 **戦略実行ログ:**")
+                for log_entry in cql_details["detailed_process_log"][-3:]:
+                    strategy_name = log_entry.get("strategy", "不明")
+                    new_results = log_entry.get("new_results", 0)
+                    total_results = log_entry.get("total_results", 0)
+                    
+                    # 戦略の詳細情報があれば表示
+                    if "details" in log_entry:
+                        strategy_details = log_entry["details"]
+                        
+                        # CQLクエリを表示
+                        if "queries" in strategy_details:
+                            st.caption(f"🔍 **{strategy_name}**:")
+                            for query in strategy_details["queries"][-2:]:  # 最新2つのクエリ
+                                st.code(query, language="sql")
+                        
+                        # 結果件数の内訳を表示
+                        if "results_breakdown" in strategy_details:
+                            breakdown_str = " | ".join(strategy_details["results_breakdown"])
+                            st.caption(f"📊 結果: {breakdown_str} → 新規{new_results}件 (累計{total_results}件)")
+        
         # リアルタイム詳細情報を表示
         if "real_time_details" in details and details["real_time_details"]:
-            st.markdown("📝 **詳細ログ:**")
+            st.markdown("📝 **実行ログ:**")
             # 最新の3件を表示
             for detail in details["real_time_details"][-3:]:
                 st.caption(f"[{detail['timestamp']}] {detail['value']}")

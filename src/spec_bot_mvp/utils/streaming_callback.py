@@ -14,6 +14,7 @@ from langchain.schema.agent import AgentAction, AgentFinish
 from langchain.schema.output import GenerationChunk
 import streamlit as st
 from threading import Lock
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +105,25 @@ class StreamlitStreamingCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """チェーン開始時のコールバック"""
-        chain_name = serialized.get("name", "Unknown")
-        self.add_message(f"🔗 **チェーン開始**: {chain_name}", "info")
+        try:
+            chain_name = serialized.get("name", "Unknown") if serialized else "Unknown"
+            
+            # inputsがNoneの場合の安全な処理
+            input_info = ""
+            if inputs is not None and isinstance(inputs, dict):
+                # 重要なキーのみを表示
+                important_keys = ["input", "query", "question"]
+                for key in important_keys:
+                    if key in inputs:
+                        value = str(inputs[key])[:50]
+                        input_info = f" | 入力: {value}{'...' if len(str(inputs[key])) > 50 else ''}"
+                        break
+            
+            self.add_message(f"🔗 **チェーン開始**: {chain_name}{input_info}", "info")
+            
+        except Exception as e:
+            # エラーハンドリング - コールバックエラーを防ぐ
+            self.add_message(f"🔗 **チェーン開始**: 詳細取得エラー ({str(e)[:30]})", "info")
     
     def on_chain_end(self, outputs: Dict[str, Any], **kwargs: Any) -> None:
         """チェーン完了時のコールバック"""
@@ -179,14 +197,31 @@ class ProcessDetailCallback(StreamlitStreamingCallback):
     """
     プロセス詳細追跡用の拡張コールバック
     
-    より詳細な実行情報を提供します。
+    より詳細な実行情報を提供し、CQL検索の詳細プロセスも表示します。
     """
     
     def __init__(self, container=None, process_tracker=None):
         super().__init__(container)
         self.process_tracker = process_tracker
         self.step_details = {}
+        self.cql_search_active = False
         
+    def add_cql_message(self, message: str, level: str = "info"):
+        """CQL検索専用のメッセージ追加"""
+        with self.lock:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            if level == "info":
+                formatted_msg = f"ℹ️ [{timestamp}] {message}"
+            elif level == "success":
+                formatted_msg = f"✅ [{timestamp}] {message}"
+            elif level == "warning":
+                formatted_msg = f"⚠️ [{timestamp}] {message}"
+            else:
+                formatted_msg = f"📝 [{timestamp}] {message}"
+            
+            self.messages.append(formatted_msg)
+            self._update_container()
+    
     def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
         super().on_llm_start(serialized, prompts, **kwargs)
         
@@ -198,26 +233,36 @@ class ProcessDetailCallback(StreamlitStreamingCallback):
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs: Any) -> None:
         super().on_tool_start(serialized, input_str, **kwargs)
         
-        # ProcessTrackerにリアルタイム詳細を追加
-        if self.process_tracker:
-            try:
-                tool_name = serialized.get("name", "Unknown Tool")
-                self.process_tracker.add_streaming_detail(
-                    f"🔧 {tool_name}実行開始",
-                    f"入力: {input_str[:100]}{'...' if len(input_str) > 100 else ''}"
-                )
-            except:
-                pass  # add_streaming_detailメソッドが存在しない場合は無視
-    
-    def on_tool_end(self, output: str, **kwargs: Any) -> None:
-        super().on_tool_end(output, **kwargs)
+        tool_name = serialized.get("name", "Unknown")
+        
+        # CQL検索ツールの検出
+        if "confluence_enhanced_cql_search" in tool_name:
+            self.cql_search_active = True
+            self.add_cql_message("🔍 Enhanced CQL検索開始", "info")
+            self.add_cql_message(f"📥 入力クエリ: '{input_str[:100]}{'...' if len(input_str) > 100 else ''}'", "info")
         
         # ProcessTrackerにリアルタイム詳細を追加
         if self.process_tracker:
             try:
-                self.process_tracker.add_streaming_detail(
-                    f"✅ {self.current_tool}実行完了",
-                    f"出力: {output[:150]}{'...' if len(output) > 150 else ''}"
-                )
-            except:
-                pass  # add_streaming_detailメソッドが存在しない場合は無視 
+                self.process_tracker.add_detail(f"ツール実行: {tool_name}")
+            except AttributeError:
+                pass
+    
+    def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        super().on_tool_end(output, **kwargs)
+        
+        # CQL検索の結果を詳細表示
+        if self.cql_search_active:
+            self.cql_search_active = False
+            self.add_cql_message("✅ Enhanced CQL検索完了", "success")
+            
+            # 出力からCQL詳細情報を抽出
+            if "戦略別結果:" in output:
+                lines = output.split('\n')
+                for line in lines:
+                    if "戦略別結果:" in line:
+                        self.add_cql_message(f"🎯 {line.strip()}", "success")
+                    elif "実行時間:" in line:
+                        self.add_cql_message(f"⏱️ {line.strip()}", "info")
+                    elif "検索クエリ:" in line:
+                        self.add_cql_message(f"📝 {line.strip()}", "info") 

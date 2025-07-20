@@ -14,7 +14,8 @@ from langchain.prompts import PromptTemplate
 
 from ..config.settings import settings
 from ..utils.log_config import get_logger
-from .confluence_tool import search_confluence_tool, get_confluence_space_structure
+from .confluence_tool import get_confluence_space_structure
+from .confluence_enhanced_cql_search import search_confluence_with_enhanced_cql
 
 logger = get_logger(__name__)
 
@@ -315,8 +316,8 @@ class ConfluenceChainSearch:
         
         for keyword in keywords:
             try:
-                # 既存のConfluence検索ツールを使用
-                search_result = search_confluence_tool(keyword)
+                # 新しいGemini強化CQL検索ツールを使用
+                search_result = search_confluence_with_enhanced_cql(keyword)
                 
                 # 結果をパースして統合
                 if search_result and len(search_result.strip()) > 50:  # より具体的な条件
