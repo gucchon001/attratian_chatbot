@@ -61,7 +61,8 @@ class SpecBotAgent:
                 temperature=settings.gemini_temperature,
                 max_tokens=min(settings.gemini_max_tokens, 2048),  # トークン制限を安全に
                 convert_system_message_to_human=True,  # システムメッセージ変換を追加
-                request_timeout=30  # タイムアウトを短縮
+                request_timeout=30,  # タイムアウトを短縮
+                streaming=False  # ストリーミングを明示的に無効化
             )
             
             logger.info(f"Gemini LLM初期化完了 - モデル: {settings.gemini_model}")
@@ -380,16 +381,29 @@ class SpecBotAgent:
             
             # エージェント実行（ストリーミングコールバック付き）
             try:
+                # ストリーミング互換性のための設定調整
+                config = {}
+                if callbacks:
+                    config["callbacks"] = callbacks
+                
+                # invoke の代わりに stream を無効化して実行
                 response = self.agent_executor.invoke(
                     {"input": user_input},
-                    {"callbacks": callbacks} if callbacks else None
+                    config if config else None
                 )
                 
                 final_answer = response.get("output", "回答を生成できませんでした。")
                 
             except Exception as e:
-                logger.error(f"エージェント実行エラー: {str(e)}")
-                final_answer = f"処理中にエラーが発生しました: {str(e)}"
+                # ストリーミングエラーの場合は、コールバックなしで再試行
+                logger.warning(f"ストリーミング実行エラー（再試行中）: {str(e)}")
+                try:
+                    response = self.agent_executor.invoke({"input": user_input})
+                    final_answer = response.get("output", "回答を生成できませんでした。")
+                    logger.info("非ストリーミングモードで正常実行完了")
+                except Exception as e2:
+                    logger.error(f"エージェント実行エラー: {str(e2)}")
+                    final_answer = f"処理中にエラーが発生しました: {str(e2)}"
             
             self.process_tracker.complete_stage(ProcessStage.SEARCH_EXECUTION)
             
