@@ -1,0 +1,166 @@
+{
+  "question_analysis": {
+    "system_prompt": "あなたは質問分析エキスパートです。ユーザーの質問を分析し、指定されたJSON形式で回答してください。",
+    
+    "examples": [
+      {
+        "input": "ログイン機能の仕様を教えて",
+        "output": {
+          "search_targets": {
+            "jira": false,
+            "confluence": true,
+            "priority": "confluence_first"
+          },
+          "question_type": {
+            "category": "specification",
+            "subcategory": "機能仕様",
+            "confidence": 0.9
+          },
+          "keywords": {
+            "primary": ["ログイン", "仕様"],
+            "secondary": ["機能"],
+            "synonyms": ["サインイン", "認証", "アクセス"],
+            "exclusions": ["ログアウト"]
+          },
+          "search_strategy": {
+            "method": "enhanced_cql",
+            "reason": "特定機能の仕様書を検索するため",
+            "fallback": "basic_keyword"
+          },
+          "context_requirements": {
+            "needs_timeline": false,
+            "needs_technical_details": true,
+            "needs_business_context": false,
+            "needs_cross_reference": false
+          }
+        }
+      },
+      {
+        "input": "チケット123のバグの原因とその仕様は？",
+        "output": {
+          "search_targets": {
+            "jira": true,
+            "confluence": true,
+            "priority": "parallel"
+          },
+          "question_type": {
+            "category": "hybrid",
+            "subcategory": "バグ調査+仕様確認",
+            "confidence": 0.95
+          },
+          "keywords": {
+            "primary": ["チケット123", "バグ", "原因", "仕様"],
+            "secondary": ["不具合", "エラー"],
+            "synonyms": ["障害", "問題"],
+            "exclusions": []
+          },
+          "search_strategy": {
+            "method": "chain_prompts",
+            "reason": "JiraとConfluenceの情報を統合する複雑な質問",
+            "fallback": "enhanced_cql"
+          },
+          "context_requirements": {
+            "needs_timeline": true,
+            "needs_technical_details": true,
+            "needs_business_context": false,
+            "needs_cross_reference": true
+          }
+        }
+      },
+      {
+        "input": "求人検索アルゴリズムの現在の状況は？",
+        "output": {
+          "search_targets": {
+            "jira": false,
+            "confluence": true,
+            "priority": "confluence_first"
+          },
+          "question_type": {
+            "category": "feature_explanation",
+            "subcategory": "機能状況確認",
+            "confidence": 0.8
+          },
+          "keywords": {
+            "primary": ["求人検索アルゴリズム", "状況"],
+            "secondary": ["現在", "求人"],
+            "synonyms": ["求人表示ロジック", "検索機能"],
+            "exclusions": []
+          },
+          "search_strategy": {
+            "method": "hybrid_search",
+            "reason": "言葉の揺れがある用語のため",
+            "fallback": "enhanced_cql"
+          },
+          "context_requirements": {
+            "needs_timeline": true,
+            "needs_technical_details": true,
+            "needs_business_context": true,
+            "needs_cross_reference": false
+          }
+        }
+      }
+    ],
+    
+    "domain_knowledge": {
+      "synonyms": {
+        "ログイン": ["サインイン", "認証", "アクセス", "AKI様"],
+        "検索": ["サーチ", "探索", "フィルター"],
+        "仕様": ["スペック", "要件", "設計"],
+        "バグ": ["不具合", "エラー", "障害", "問題"]
+      },
+      "project_terms": {
+        "求人検索アルゴリズム": "求人表示ロジック",
+        "会員": "ユーザー"
+      }
+    }
+  },
+  
+  "search_orchestration": {
+    "system_prompt": "あなたは検索オーケストレーションエキスパートです。質問分析結果に基づいて最適な検索戦略を実行し、高品質な情報を取得します。",
+    
+    "strategy_templates": {
+      "enhanced_cql": {
+        "description": "高精度CQL検索で特定の仕様書やドキュメントを検索",
+        "confluence_query_template": "title ~ \"{primary_keywords}\" AND (text ~ \"{expanded_keywords}\" OR title ~ \"{synonyms}\")",
+        "priority": "title_match_first"
+      },
+      "chain_prompts": {
+        "description": "複雑な質問に対する段階的検索戦略",
+        "steps": ["jira_search", "confluence_search", "cross_reference"]
+      },
+      "hybrid_search": {
+        "description": "キーワード検索とセマンティック検索の組み合わせ",
+        "fallback_order": ["enhanced_cql", "basic_keyword", "broad_search"]
+      },
+      "basic_keyword": {
+        "description": "シンプルなキーワード検索",
+        "confluence_query_template": "text ~ \"{primary_keywords}\""
+      }
+    },
+    
+    "execution_flow": {
+      "confluence_first": [
+        "execute_confluence_search",
+        "evaluate_results",
+        "fallback_if_needed"
+      ],
+      "jira_first": [
+        "execute_jira_search",
+        "evaluate_results", 
+        "fallback_if_needed"
+      ],
+      "parallel": [
+        "execute_parallel_search",
+        "merge_results",
+        "rank_by_relevance"
+      ]
+    },
+    
+    "quality_criteria": {
+      "minimum_results": 1,
+      "relevance_threshold": 0.7,
+      "content_completeness": ["title", "summary", "link"],
+      "fallback_triggers": ["no_results", "low_relevance", "error"]
+    }
+  }
+} 
