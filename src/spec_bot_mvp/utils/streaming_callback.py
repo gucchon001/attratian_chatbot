@@ -77,26 +77,38 @@ class StreamlitStreamingCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """LLM開始時のコールバック"""
-        self.add_message("🧠 **LLM思考開始**", "info")
+        try:
+            self.add_message("🧠 **LLM思考開始**", "info")
+        except Exception as e:
+            logger.warning(f"on_llm_start callback error: {e}")
         
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """LLMの新しいトークン生成時のコールバック"""
-        self.llm_response_buffer += token
-        
-        # 意味のある単位で表示（句読点や改行など）
-        if token in ["。", "、", "！", "？", "\n"] or len(self.llm_response_buffer) % 20 == 0:
-            self.add_message(f"```\n{self.llm_response_buffer[-100:]}\n```", "llm_token")
+        try:
+            self.llm_response_buffer += token
+            
+            # 意味のある単位で表示（句読点や改行など）
+            if token in ["。", "、", "！", "？", "\n"] or len(self.llm_response_buffer) % 20 == 0:
+                self.add_message(f"```\n{self.llm_response_buffer[-100:]}\n```", "llm_token")
+        except Exception as e:
+            logger.warning(f"on_llm_new_token callback error: {e}")
     
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """LLM完了時のコールバック"""
-        self.add_message("✅ **LLM思考完了**", "info")
-        if self.llm_response_buffer:
-            self.add_message(f"**最終応答**:\n```\n{self.llm_response_buffer[-200:]}\n```", "llm_token")
-        self.llm_response_buffer = ""
+        try:
+            self.add_message("✅ **LLM思考完了**", "info")
+            if self.llm_response_buffer:
+                self.add_message(f"**最終応答**:\n```\n{self.llm_response_buffer[-200:]}\n```", "llm_token")
+            self.llm_response_buffer = ""
+        except Exception as e:
+            logger.warning(f"on_llm_end callback error: {e}")
     
     def on_llm_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any) -> None:
         """LLMエラー時のコールバック"""
-        self.add_message(f"❌ **LLMエラー**: {str(error)}", "error")
+        try:
+            self.add_message(f"❌ **LLMエラー**: {str(error)}", "error")
+        except Exception as e:
+            logger.warning(f"on_llm_error callback error: {e}")
     
     def on_chain_start(
         self, 
@@ -104,11 +116,14 @@ class StreamlitStreamingCallback(BaseCallbackHandler):
         inputs: Dict[str, Any], 
         **kwargs: Any
     ) -> None:
-        """チェーン開始時のコールバック"""
+        """チェーン開始時のコールバック - LangChain v0.2+対応"""
         try:
-            chain_name = serialized.get("name", "Unknown") if serialized else "Unknown"
+            # LangChain 0.2+では引数構造が変更されている可能性があるため、安全に処理
+            chain_name = "Unknown"
+            if serialized and isinstance(serialized, dict):
+                chain_name = serialized.get("name", "Unknown")
             
-            # inputsがNoneの場合の安全な処理
+            # inputsがNoneまたは辞書でない場合の安全な処理
             input_info = ""
             if inputs is not None and isinstance(inputs, dict):
                 # 重要なキーのみを表示
@@ -123,15 +138,22 @@ class StreamlitStreamingCallback(BaseCallbackHandler):
             
         except Exception as e:
             # エラーハンドリング - コールバックエラーを防ぐ
-            self.add_message(f"🔗 **チェーン開始**: 詳細取得エラー ({str(e)[:30]})", "info")
+            logger.warning(f"on_chain_start callback error: {e}")
+            self.add_message(f"🔗 **チェーン開始**: 詳細取得エラー", "info")
     
     def on_chain_end(self, outputs: Dict[str, Any], **kwargs: Any) -> None:
         """チェーン完了時のコールバック"""
-        self.add_message("✅ **チェーン完了**", "info")
+        try:
+            self.add_message("✅ **チェーン完了**", "info")
+        except Exception as e:
+            logger.warning(f"on_chain_end callback error: {e}")
     
     def on_chain_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any) -> None:
         """チェーンエラー時のコールバック"""
-        self.add_message(f"❌ **チェーンエラー**: {str(error)}", "error")
+        try:
+            self.add_message(f"❌ **チェーンエラー**: {str(error)}", "error")
+        except Exception as e:
+            logger.warning(f"on_chain_error callback error: {e}")
     
     def on_tool_start(
         self, 
@@ -140,16 +162,26 @@ class StreamlitStreamingCallback(BaseCallbackHandler):
         **kwargs: Any
     ) -> None:
         """ツール開始時のコールバック"""
-        tool_name = serialized.get("name", "Unknown Tool")
-        self.current_tool = tool_name
-        self.add_message(f"🔧 **ツール実行開始**: {tool_name}", "action")
-        self.add_message(f"📥 **入力**: {input_str[:100]}{'...' if len(input_str) > 100 else ''}", "action")
+        try:
+            tool_name = "Unknown Tool"
+            if serialized and isinstance(serialized, dict):
+                tool_name = serialized.get("name", "Unknown Tool")
+                
+            self.current_tool = tool_name
+            self.add_message(f"🔧 **ツール実行開始**: {tool_name}", "action")
+            
+            if input_str:
+                preview = input_str[:100] + ('...' if len(input_str) > 100 else '')
+                self.add_message(f"📥 **入力**: {preview}", "action")
+        except Exception as e:
+            logger.warning(f"on_tool_start callback error: {e}")
     
     def on_tool_end(self, output: str, **kwargs: Any) -> None:
         """ツール完了時のコールバック"""
-        self.add_message(f"✅ **ツール実行完了**: {self.current_tool}", "observation")
-        self.add_message(f"📤 **出力**: {output[:200]}{'...' if len(output) > 200 else ''}", "observation")
-        self.current_tool = None
+        try:
+            self.add_message(f"✅ **ツール実行完了**: {self.current_tool}", "observation")
+        except Exception as e:
+            logger.warning(f"on_tool_end callback error: {e}")
     
     def on_tool_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any) -> None:
         """ツールエラー時のコールバック"""
@@ -208,61 +240,79 @@ class ProcessDetailCallback(StreamlitStreamingCallback):
         
     def add_cql_message(self, message: str, level: str = "info"):
         """CQL検索専用のメッセージ追加"""
-        with self.lock:
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            if level == "info":
-                formatted_msg = f"ℹ️ [{timestamp}] {message}"
-            elif level == "success":
-                formatted_msg = f"✅ [{timestamp}] {message}"
-            elif level == "warning":
-                formatted_msg = f"⚠️ [{timestamp}] {message}"
-            else:
-                formatted_msg = f"📝 [{timestamp}] {message}"
-            
-            self.messages.append(formatted_msg)
-            self._update_container()
+        try:
+            with self.lock:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                if level == "info":
+                    formatted_msg = f"ℹ️ [{timestamp}] {message}"
+                elif level == "success":
+                    formatted_msg = f"✅ [{timestamp}] {message}"
+                elif level == "warning":
+                    formatted_msg = f"⚠️ [{timestamp}] {message}"
+                else:
+                    formatted_msg = f"📝 [{timestamp}] {message}"
+                
+                self.messages.append((formatted_msg, level))
+                self._update_container()
+        except Exception as e:
+            logger.warning(f"add_cql_message error: {e}")
     
     def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
-        super().on_llm_start(serialized, prompts, **kwargs)
-        
-        # プロンプトの詳細を表示
-        if prompts and len(prompts[0]) > 50:
-            prompt_preview = prompts[0][:200] + "..." if len(prompts[0]) > 200 else prompts[0]
-            self.add_message(f"📝 **プロンプト**: {prompt_preview}", "info")
+        try:
+            super().on_llm_start(serialized, prompts, **kwargs)
+            
+            # プロンプトの詳細を表示
+            if prompts and len(prompts) > 0 and len(prompts[0]) > 50:
+                prompt_preview = prompts[0][:200] + "..." if len(prompts[0]) > 200 else prompts[0]
+                self.add_message(f"📝 **プロンプト**: {prompt_preview}", "info")
+        except Exception as e:
+            logger.warning(f"ProcessDetailCallback.on_llm_start error: {e}")
     
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs: Any) -> None:
-        super().on_tool_start(serialized, input_str, **kwargs)
-        
-        tool_name = serialized.get("name", "Unknown")
-        
-        # CQL検索ツールの検出
-        if "confluence_enhanced_cql_search" in tool_name:
-            self.cql_search_active = True
-            self.add_cql_message("🔍 Enhanced CQL検索開始", "info")
-            self.add_cql_message(f"📥 入力クエリ: '{input_str[:100]}{'...' if len(input_str) > 100 else ''}'", "info")
-        
-        # ProcessTrackerにリアルタイム詳細を追加
-        if self.process_tracker:
-            try:
-                self.process_tracker.add_detail(f"ツール実行: {tool_name}")
-            except AttributeError:
-                pass
+        try:
+            super().on_tool_start(serialized, input_str, **kwargs)
+            
+            tool_name = "Unknown"
+            if serialized and isinstance(serialized, dict):
+                tool_name = serialized.get("name", "Unknown")
+            
+            # CQL検索ツールの検出
+            if "confluence_enhanced_cql_search" in tool_name:
+                self.cql_search_active = True
+                self.add_cql_message("🔍 Enhanced CQL検索開始", "info")
+                if input_str:
+                    preview = input_str[:100] + ('...' if len(input_str) > 100 else '')
+                    self.add_cql_message(f"📥 入力クエリ: '{preview}'", "info")
+            
+            # ProcessTrackerにリアルタイム詳細を追加
+            if self.process_tracker:
+                try:
+                    if hasattr(self.process_tracker, 'add_detail'):
+                        self.process_tracker.add_detail(f"ツール実行: {tool_name}")
+                except (AttributeError, Exception) as e:
+                    logger.debug(f"ProcessTracker add_detail error: {e}")
+        except Exception as e:
+            logger.warning(f"ProcessDetailCallback.on_tool_start error: {e}")
     
     def on_tool_end(self, output: str, **kwargs: Any) -> None:
-        super().on_tool_end(output, **kwargs)
-        
-        # CQL検索の結果を詳細表示
-        if self.cql_search_active:
-            self.cql_search_active = False
-            self.add_cql_message("✅ Enhanced CQL検索完了", "success")
+        try:
+            super().on_tool_end(output, **kwargs)
             
-            # 出力からCQL詳細情報を抽出
-            if "戦略別結果:" in output:
-                lines = output.split('\n')
-                for line in lines:
-                    if "戦略別結果:" in line:
-                        self.add_cql_message(f"🎯 {line.strip()}", "success")
-                    elif "実行時間:" in line:
-                        self.add_cql_message(f"⏱️ {line.strip()}", "info")
-                    elif "検索クエリ:" in line:
-                        self.add_cql_message(f"📝 {line.strip()}", "info") 
+            # CQL検索の結果を詳細表示
+            if self.cql_search_active:
+                self.cql_search_active = False
+                self.add_cql_message("✅ Enhanced CQL検索完了", "success")
+                
+                # 出力からCQL詳細情報を抽出
+                if output and "戦略別結果:" in output:
+                    lines = output.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if "戦略別結果:" in line:
+                            self.add_cql_message(f"🎯 {line}", "success")
+                        elif "実行時間:" in line:
+                            self.add_cql_message(f"⏱️ {line}", "info")
+                        elif "検索クエリ:" in line:
+                            self.add_cql_message(f"🔍 {line}", "info") 
+        except Exception as e:
+            logger.warning(f"ProcessDetailCallback.on_tool_end error: {e}") 

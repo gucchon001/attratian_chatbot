@@ -175,10 +175,28 @@ class CQLSearchEngine:
                 cql_or = f'({or_conditions}) and space = "{space_key}"'
                 step.cql_queries.append(f"CQL_OR: {cql_or}")
                 
-                # 実際の検索実行（ここでは簡単化のため、OR検索のみ実行）
-                results = self.api_executor(cql_or)
+                # 両方の検索を実行して結果を統合
+                and_results = self.api_executor(cql_and)
+                or_results = self.api_executor(cql_or)
+                
+                # 結果を統合（重複除去）
+                combined_results = []
+                seen_ids = set()
+                
+                # AND検索結果を優先
+                for result in and_results:
+                    if result.get('id') not in seen_ids:
+                        combined_results.append(result)
+                        seen_ids.add(result.get('id'))
+                
+                # OR検索結果を追加（重複は除外）
+                for result in or_results:
+                    if result.get('id') not in seen_ids:
+                        combined_results.append(result)
+                        seen_ids.add(result.get('id'))
+                
+                results = combined_results
                 step.results_count = len(results)
-                step.results = results
             else:
                 step.results = []
                 

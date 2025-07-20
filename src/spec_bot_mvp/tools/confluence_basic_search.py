@@ -414,7 +414,6 @@ class ConfluenceBasicSearch:
                 
                 result_lines.extend([
                     f"📄 **{i}. {title}**{score_info}",
-                    f"   📍 スペース: {space_info['name']} ({space_info['key']})",
                     f"   🔗 リンク: {page_url}",
                 ])
                 

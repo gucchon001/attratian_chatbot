@@ -211,11 +211,9 @@ class StreamlitSearchFormatter:
             lines.append("### 📄 検索結果")
             for i, item in enumerate(result.results[:5], 1):  # 上位5件
                 title = item.get('title', '無題')
-                space = item.get('space', {}).get('name', 'Unknown')
                 url = item.get('_links', {}).get('webui', '#')
                 
                 lines.append(f"**{i}. [{title}]({url})**")
-                lines.append(f"   - スペース: {space}")
                 
                 # 内容の一部を表示
                 excerpt = item.get('excerpt', '').strip()

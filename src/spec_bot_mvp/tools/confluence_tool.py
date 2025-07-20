@@ -384,7 +384,6 @@ def _format_confluence_results(results: List[Dict[str, Any]], query: str, total_
             
             result_lines.extend([
                 f"📄 **{i}. {title}**",
-                f"   📍 スペース: {space_name} ({space_key}) | タイプ: {page_type}",
                 f"   👤 作成者: {created_by}",
             ])
             
@@ -750,7 +749,6 @@ def _format_confluence_results_with_filters(
             excerpt_cleaned = _clean_html_tags(excerpt)[:200]  # 200文字まで
             
             result_lines.append(f"{i}. **{title}**")
-            result_lines.append(f"   📍 スペース: {space_name} ({space_key}) | タイプ: {page_type}")
             result_lines.append(f"   👤 作成者: {created_by} | 作成日: {created_date}")
             result_lines.append(f"   🔗 URL: {page_url}")
             

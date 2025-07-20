@@ -162,7 +162,7 @@ class SpecBotAgent:
                 agent=agent,
                 tools=self.tools,
                 memory=self.memory,
-                verbose=True,
+                verbose=False,
                 handle_parsing_errors=True,
                 max_iterations=4,  # 最終回答生成に十分な回数
                 max_execution_time=90,  # 余裕を持った時間設定
