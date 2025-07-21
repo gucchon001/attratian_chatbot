@@ -19,7 +19,7 @@ current_dir = Path(__file__).parent
 project_root = current_dir.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.spec_bot_mvp.utils.confluence_hierarchy_manager import ConfluenceHierarchyManager
+from ..utils.confluence_hierarchy_manager import ConfluenceHierarchyManager
 
 
 class HierarchyFilterUI:

@@ -133,7 +133,7 @@ def load_filter_options():
         try:
             with st.spinner('フィルターオプションを読み込み中...'):
                 # キャッシュから取得を試行
-                from src.spec_bot_mvp.utils.cache_manager import CacheManager
+                from ..utils.cache_manager import CacheManager
                 cache_manager = CacheManager()
                 
                 # Jiraフィルターオプションをキャッシュから取得
@@ -151,7 +151,7 @@ def load_filter_options():
                     
                     # Jiraフィルターオプションを取得
                     try:
-                        from src.spec_bot_mvp.tools.jira_tool import get_jira_filter_options
+                        from ..tools.jira_tool import get_jira_filter_options
                         jira_filter_options = get_jira_filter_options()
                         
                         # パースしてセッションステートに設定
@@ -193,7 +193,7 @@ def load_filter_options():
                     
                     # Confluenceフィルターオプションを取得
                     try:
-                        from src.spec_bot_mvp.tools.confluence_tool import get_confluence_filter_options
+                        from ..tools.confluence_tool import get_confluence_filter_options
                         confluence_filter_options = get_confluence_filter_options()
                         
                         # パースしてセッションステートに設定
@@ -521,7 +521,7 @@ def render_main_chat():
                 
                 # 即座に新しいエージェントを作成
                 try:
-                    from src.spec_bot_mvp.core.agent import SpecBotAgent
+                    from ..core.agent import SpecBotAgent
                     st.session_state.agent = SpecBotAgent()
                     
                     # メソッド存在確認
@@ -1174,7 +1174,7 @@ def create_clean_streaming_response(agent: SpecBotAgent, prompt: str, process_pl
     """
     import time
     import streamlit as st
-    from src.spec_bot_mvp.utils.process_tracker import ProcessStage, StreamlitProcessDisplay
+    from ..utils.process_tracker import ProcessStage, StreamlitProcessDisplay
     
     # プロセス追跡システムの取得
     process_tracker = agent.get_process_tracker()
@@ -1291,7 +1291,7 @@ def execute_agent_with_accordion_and_streaming(agent: SpecBotAgent, prompt: str,
     """
     import time
     import streamlit as st
-    from src.spec_bot_mvp.utils.process_tracker import ProcessStage, StreamlitProcessDisplay
+    from ..utils.process_tracker import ProcessStage, StreamlitProcessDisplay
     
     # プロセス追跡システムの取得
     process_tracker = agent.get_process_tracker()

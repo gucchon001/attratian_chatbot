@@ -24,8 +24,8 @@ except ImportError:
     import sys
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-    from src.spec_bot_mvp.tools.confluence_tool import get_confluence_page_hierarchy
-    from src.spec_bot_mvp.config.settings import settings
+    from ..tools.confluence_tool import get_confluence_page_hierarchy
+    from ..config.settings import settings
 
 
 class ConfluenceHierarchyManager:
