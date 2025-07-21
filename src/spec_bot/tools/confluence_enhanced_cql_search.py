@@ -113,7 +113,7 @@ def _get_search_engine():
 
 def search_confluence_with_enhanced_cql(query: str) -> str:
     """
-    Gemini強化CQL検索のメイン関数
+    Gemini強化CQL検索のメイン関数（XAI対応フィルタ統合）
     
     Args:
         query: 検索クエリ
@@ -127,13 +127,44 @@ def search_confluence_with_enhanced_cql(query: str) -> str:
         # 検索エンジンとフォーマッターを取得
         search_engine, formatter = _get_search_engine()
         
-        # CQL検索実行
-        search_result = search_engine.search(query)
+        # Streamlitセッション状態からフィルタ条件を取得（XAI対応）
+        hierarchy_filters = []
+        include_deleted = False
+        process_tracker = None
+        
+        try:
+            import streamlit as st
+            if hasattr(st, 'session_state'):
+                # 階層フィルタを取得
+                if hasattr(st.session_state, 'hierarchy_selected') and st.session_state.hierarchy_selected:
+                    from ..ui.hierarchy_filter_ui import HierarchyFilterUI
+                    filter_ui = HierarchyFilterUI()
+                    hierarchy_filters = filter_ui.get_selected_folder_filters()
+                    logger.info(f"📂 階層フィルタ適用: {len(hierarchy_filters)}個")
+                
+                # 削除ページフィルタを取得
+                if hasattr(st.session_state, 'include_deleted_pages'):
+                    include_deleted = st.session_state.include_deleted_pages
+                    logger.info(f"🗑️ 削除ページフィルタ: {'含む' if include_deleted else '除外'}")
+                
+                # プロセス追跡器を取得（可能な場合）
+                if hasattr(st.session_state, 'agent') and hasattr(st.session_state.agent, 'process_tracker'):
+                    process_tracker = st.session_state.agent.process_tracker
+        except Exception as filter_error:
+            logger.warning(f"⚠️ フィルタ条件取得エラー（デフォルト値使用）: {filter_error}")
+        
+        # CQL検索実行（フィルタ条件とプロセス追跡器を渡す）
+        search_result = search_engine.search(
+            query=query,
+            hierarchy_filters=hierarchy_filters,
+            include_deleted=include_deleted,
+            process_tracker=process_tracker
+        )
         
         # Streamlit向けにフォーマット
         formatted_result = formatter.format_search_result(search_result)
         
-        logger.info(f"✅ Gemini強化CQL検索完了: {search_result.total_results}件取得")
+        logger.info(f"✅ Gemini強化CQL検索完了: {search_result.total_results}件取得 (フィルタ適用)")
         
         return formatted_result
         

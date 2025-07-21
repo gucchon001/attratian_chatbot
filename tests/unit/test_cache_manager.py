@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 # プロジェクトのルートパスを追加
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from spec_bot.utils.cache_manager import CacheManager, FilterCacheKeys
+from src.spec_bot.utils.cache_manager import CacheManager, FilterCacheKeys
 
 
 def test_cache_manager_initialization():

@@ -11,9 +11,9 @@ from pathlib import Path
 # プロジェクトのルートパスを追加
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from spec_bot.tools.jira_tool import search_jira_with_filters
-from spec_bot.tools.confluence_tool import search_confluence_tool
-from spec_bot.config.settings import settings
+from src.spec_bot.tools.jira_tool import search_jira_with_filters
+from src.spec_bot.tools.confluence_tool import search_confluence_tool
+from src.spec_bot.config.settings import settings
 
 
 def test_jira_tool_basic_search():

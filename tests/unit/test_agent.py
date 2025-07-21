@@ -14,8 +14,8 @@ from unittest.mock import patch, MagicMock
 # プロジェクトのルートパスを追加
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from spec_bot.core.agent import SpecBotAgent
-from spec_bot.config.settings import settings
+from src.spec_bot.core.agent import SpecBotAgent
+from src.spec_bot.config.settings import settings
 
 
 class TestSpecBotAgentInitialization:

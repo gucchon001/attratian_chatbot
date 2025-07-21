@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from spec_bot.config.settings import settings
+from src.spec_bot.config.settings import settings
 
 def test_gemini_api_connection():
     """Gemini API接続テスト"""

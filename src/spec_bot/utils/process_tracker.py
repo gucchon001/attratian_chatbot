@@ -270,6 +270,52 @@ class ProcessTracker:
             return self.stages[stage].details.get("real_time_details", [])
         return []
 
+    def add_filter_conditions(self, stage: ProcessStage, filter_conditions: Dict[str, Any]) -> None:
+        """フィルタ条件を段階詳細に追加（XAI対応）"""
+        if stage in self.stages:
+            if "filter_conditions" not in self.stages[stage].details:
+                self.stages[stage].details["filter_conditions"] = {}
+            
+            self.stages[stage].details["filter_conditions"].update(filter_conditions)
+            
+            # フィルタ条件のサマリーを生成
+            filter_summary = self._generate_filter_summary(filter_conditions)
+            self.stages[stage].details["filter_summary"] = filter_summary
+            
+    def _generate_filter_summary(self, filter_conditions: Dict[str, Any]) -> str:
+        """フィルタ条件のサマリー文字列を生成"""
+        summary_parts = []
+        
+        # スペースフィルタ
+        if "space_key" in filter_conditions:
+            summary_parts.append(f"📁 スペース: {filter_conditions['space_key']}")
+        
+        # 階層フィルタ
+        if "hierarchy_filters" in filter_conditions and filter_conditions["hierarchy_filters"]:
+            folder_count = len(filter_conditions["hierarchy_filters"])
+            summary_parts.append(f"🗂️ フォルダ: {folder_count}個選択")
+        
+        # 削除ページフィルタ
+        if "include_deleted" in filter_conditions:
+            status = "含む" if filter_conditions["include_deleted"] else "除外"
+            summary_parts.append(f"🗑️ 削除ページ: {status}")
+        
+        # 時期フィルタ
+        if "date_filters" in filter_conditions:
+            date_filters = filter_conditions["date_filters"]
+            if date_filters.get("created_after") or date_filters.get("created_before"):
+                summary_parts.append("📅 作成日フィルタ: 適用")
+            if date_filters.get("updated_after") or date_filters.get("updated_before"):
+                summary_parts.append("📅 更新日フィルタ: 適用")
+        
+        return " | ".join(summary_parts) if summary_parts else "フィルタなし"
+
+    def get_filter_conditions(self, stage: ProcessStage) -> Dict[str, Any]:
+        """フィルタ条件を取得"""
+        if stage in self.stages:
+            return self.stages[stage].details.get("filter_conditions", {})
+        return {}
+
 
 class StreamlitProcessDisplay:
     """
@@ -439,6 +485,35 @@ class StreamlitProcessDisplay:
                         if "results_breakdown" in strategy_details:
                             breakdown_str = " | ".join(strategy_details["results_breakdown"])
                             st.caption(f"📊 結果: {breakdown_str} → 新規{new_results}件 (累計{total_results}件)")
+        
+        # フィルタ条件を表示（XAI対応）
+        if "filter_summary" in details:
+            st.markdown("🔍 **適用フィルタ:**")
+            st.info(details["filter_summary"])
+        
+        # フィルタ条件の詳細表示
+        if "filter_conditions" in details:
+            filter_conditions = details["filter_conditions"]
+            
+            # 階層フィルタの詳細
+            if "hierarchy_filters" in filter_conditions and filter_conditions["hierarchy_filters"]:
+                hierarchy_filters = filter_conditions["hierarchy_filters"]
+                st.markdown("📂 **フォルダフィルタ詳細:**")
+                
+                # フォルダ名を見やすく表示（最大5個まで）
+                display_folders = hierarchy_filters[:5]
+                for folder in display_folders:
+                    st.caption(f"• {folder}")
+                
+                if len(hierarchy_filters) > 5:
+                    st.caption(f"... 他{len(hierarchy_filters)-5}個のフォルダ")
+            
+            # CQLクエリの詳細表示
+            if "generated_cql_queries" in filter_conditions:
+                cql_queries = filter_conditions["generated_cql_queries"]
+                st.markdown("💻 **生成CQLクエリ:**")
+                for i, query in enumerate(cql_queries[:2], 1):  # 最大2つ表示
+                    st.code(query, language="sql")
         
         # リアルタイム詳細情報を表示
         if "real_time_details" in details and details["real_time_details"]:

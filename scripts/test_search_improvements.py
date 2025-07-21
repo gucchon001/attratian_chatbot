@@ -15,9 +15,9 @@ from typing import Dict, List, Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from spec_bot.tools.confluence_tool import search_confluence_tool
-from spec_bot.tools.confluence_enhanced_search import search_confluence_enhanced
-from spec_bot.tools.confluence_indexer import search_indexed_confluence, ensure_index_ready
+from src.spec_bot.tools.confluence_tool import search_confluence_tool
+from src.spec_bot.tools.confluence_enhanced_search import search_confluence_enhanced
+from src.spec_bot.tools.confluence_indexer import search_indexed_confluence, ensure_index_ready
 
 
 class SearchComparison:

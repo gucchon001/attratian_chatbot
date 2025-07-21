@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "attratian-chatbot"
+version = "2.1.0"
+description = "Advanced Atlassian (Jira/Confluence) chatbot with LangChain and Gemini LLM"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.28.0",
+    "langchain>=0.3.0",
+    "langchain-google-genai>=2.0.0",
+    "atlassian-python-api>=3.41.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/attratian-chatbot"
+Repository = "https://github.com/your-username/attratian-chatbot"
+Issues = "https://github.com/your-username/attratian-chatbot/issues"
+
+[project.scripts]
+attratian-chatbot = "src.spec_bot.ui.streamlit_app:main"
+
+# src/レイアウト対応設定
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["spec_bot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --cov=src.spec_bot --cov-report=html --cov-report=term-missing"
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true 

@@ -57,13 +57,19 @@ class CQLSearchEngine:
             from .keyword_extractors import RuleBasedKeywordExtractor
             self.keyword_extractor = RuleBasedKeywordExtractor()
     
-    def search(self, query: str, space_key: str = "CLIENTTOMO") -> SearchResult:
+    def search(self, query: str, space_key: str = "CLIENTTOMO", 
+               hierarchy_filters: List[str] = None, 
+               include_deleted: bool = False,
+               process_tracker=None) -> SearchResult:
         """
-        5段階CQL検索の実行
+        3段階CQL検索の実行（フィルタ対応・XAI可視化）
         
         Args:
             query: 検索クエリ
             space_key: Confluenceスペースキー
+            hierarchy_filters: 階層フィルタ（ancestor条件）
+            include_deleted: 削除ページを含むかどうか
+            process_tracker: プロセス追跡器（XAI可視化用）
             
         Returns:
             SearchResult: 検索結果とプロセス情報
@@ -72,17 +78,31 @@ class CQLSearchEngine:
         start_time = time.time()
         all_results = []
         
+        # フィルタ条件を正規化
+        hierarchy_filters = hierarchy_filters or []
+        
+        # XAI対応: フィルタ条件をプロセス追跡器に記録
+        if process_tracker:
+            from ..utils.process_tracker import ProcessStage
+            filter_conditions = {
+                "space_key": space_key,
+                "hierarchy_filters": hierarchy_filters,
+                "include_deleted": include_deleted,
+                "generated_cql_queries": []  # 後で追加
+            }
+            process_tracker.add_filter_conditions(ProcessStage.SEARCH_EXECUTION, filter_conditions)
+        
         # キーワード抽出
         keywords = self.keyword_extractor.extract_keywords(query)
         
         # Step 1: タイトル優先検索（キーワードベース）
-        step1 = self._execute_title_search(query, space_key, keywords)
+        step1 = self._execute_title_search(query, space_key, keywords, hierarchy_filters, include_deleted)
         step1.keywords = keywords  # キーワード情報を追加
         result.steps.append(step1)
         all_results.extend(step1.results if hasattr(step1, 'results') else [])
         
         # Step 2: キーワード分割検索
-        step2 = self._execute_keyword_split_search(query, space_key, keywords)
+        step2 = self._execute_keyword_split_search(query, space_key, keywords, hierarchy_filters, include_deleted)
         result.steps.append(step2)
         new_results2 = self._deduplicate_results(
             step2.results if hasattr(step2, 'results') else [], 
@@ -91,7 +111,7 @@ class CQLSearchEngine:
         all_results.extend(new_results2)
         
         # Step 3: フレーズ検索（クリーンクエリ）
-        step3 = self._execute_phrase_search(query, space_key, keywords)
+        step3 = self._execute_phrase_search(query, space_key, keywords, hierarchy_filters, include_deleted)
         step3.keywords = keywords  # キーワード情報を追加
         result.steps.append(step3)
         new_results3 = self._deduplicate_results(
@@ -99,6 +119,17 @@ class CQLSearchEngine:
             all_results
         )
         all_results.extend(new_results3)
+        
+        # XAI対応: 生成されたCQLクエリをプロセス追跡器に追加
+        if process_tracker:
+            all_cql_queries = []
+            for step in [step1, step2, step3]:
+                all_cql_queries.extend(step.cql_queries)
+            
+            # フィルタ条件を更新
+            filter_conditions = process_tracker.get_filter_conditions(ProcessStage.SEARCH_EXECUTION)
+            filter_conditions["generated_cql_queries"] = all_cql_queries
+            process_tracker.add_filter_conditions(ProcessStage.SEARCH_EXECUTION, filter_conditions)
         
         # 結果をまとめる
         result.results = all_results
@@ -112,7 +143,8 @@ class CQLSearchEngine:
         
         return result
     
-    def _execute_title_search(self, query: str, space_key: str, keywords: List[str] = None) -> SearchStep:
+    def _execute_title_search(self, query: str, space_key: str, keywords: List[str] = None, 
+                              hierarchy_filters: List[str] = None, include_deleted: bool = False) -> SearchStep:
         """タイトル優先検索の実行（キーワードベース、汎用句除去）"""
         step = SearchStep(
             step_number=1,
@@ -122,19 +154,21 @@ class CQLSearchEngine:
         
         start_time = time.time()
         try:
-            # キーワードが提供されている場合は、それを使用
+            # 基本のCQL条件を構築
             if keywords and len(keywords) > 0:
                 # 複数キーワードの場合はOR検索
                 if len(keywords) == 1:
-                    cql = f'title ~ "{keywords[0]}" and space = "{space_key}"'
+                    base_condition = f'title ~ "{keywords[0]}"'
                 else:
                     keyword_conditions = ' OR '.join([f'title ~ "{kw}"' for kw in keywords])
-                    cql = f'({keyword_conditions}) and space = "{space_key}"'
+                    base_condition = f'({keyword_conditions})'
             else:
                 # フォールバック: 汎用句を除去したクリーンクエリ
                 clean_query = self._clean_query_for_search(query)
-                cql = f'title ~ "{clean_query}" and space = "{space_key}"'
-                
+                base_condition = f'title ~ "{clean_query}"'
+            
+            # CQLクエリを構築（フィルタ条件を統合）
+            cql = self._build_cql_with_filters(base_condition, space_key, hierarchy_filters, include_deleted)
             step.cql_queries.append(cql)
             
             results = self.api_executor(cql)
@@ -148,7 +182,53 @@ class CQLSearchEngine:
         step.execution_time = time.time() - start_time
         return step
     
-    def _execute_keyword_split_search(self, query: str, space_key: str, keywords: List[str] = None) -> SearchStep:
+    def _build_cql_with_filters(self, base_condition: str, space_key: str, 
+                                hierarchy_filters: List[str] = None, include_deleted: bool = False) -> str:
+        """
+        基本条件とフィルタ条件を統合してCQLクエリを構築
+        
+        Args:
+            base_condition: 基本検索条件 (e.g., 'title ~ "keyword"')
+            space_key: スペースキー
+            hierarchy_filters: 階層フィルタリスト
+            include_deleted: 削除ページを含むかどうか
+            
+        Returns:
+            str: 完全なCQLクエリ
+        """
+        conditions = [base_condition]
+        
+        # スペース条件を追加
+        conditions.append(f'space = "{space_key}"')
+        
+        # 階層フィルタを追加
+        if hierarchy_filters:
+            # 複数の階層フィルタをOR条件で結合
+            hierarchy_conditions = []
+            for filter_condition in hierarchy_filters:
+                if filter_condition.strip():  # 空文字列を除外
+                    hierarchy_conditions.append(filter_condition)
+            
+            if hierarchy_conditions:
+                if len(hierarchy_conditions) == 1:
+                    conditions.append(hierarchy_conditions[0])
+                else:
+                    combined_hierarchy = ' OR '.join(f'({condition})' for condition in hierarchy_conditions)
+                    conditions.append(f'({combined_hierarchy})')
+        
+        # 削除ページフィルタを追加
+        if not include_deleted:
+            # 削除・廃止マークのあるページを除外
+            conditions.append('title !~ "%%削除%%"')
+            conditions.append('title !~ "%%廃止%%"')
+        
+        # 全条件をAND条件で結合
+        final_cql = ' AND '.join(conditions)
+        
+        return final_cql
+    
+    def _execute_keyword_split_search(self, query: str, space_key: str, keywords: List[str] = None, 
+                                      hierarchy_filters: List[str] = None, include_deleted: bool = False) -> SearchStep:
         """キーワード分割検索の実行（抽出済みキーワードを使用）"""
         step = SearchStep(
             step_number=2,
@@ -167,12 +247,14 @@ class CQLSearchEngine:
             if len(keywords) >= 2:
                 # AND検索
                 and_conditions = " AND ".join([f'text ~ "{kw}"' for kw in keywords])
-                cql_and = f'({and_conditions}) and space = "{space_key}"'
+                and_base_condition = f'({and_conditions})'
+                cql_and = self._build_cql_with_filters(and_base_condition, space_key, hierarchy_filters, include_deleted)
                 step.cql_queries.append(f"CQL_AND: {cql_and}")
                 
                 # OR検索
                 or_conditions = " OR ".join([f'text ~ "{kw}"' for kw in keywords])
-                cql_or = f'({or_conditions}) and space = "{space_key}"'
+                or_base_condition = f'({or_conditions})'
+                cql_or = self._build_cql_with_filters(or_base_condition, space_key, hierarchy_filters, include_deleted)
                 step.cql_queries.append(f"CQL_OR: {cql_or}")
                 
                 # 両方の検索を実行して結果を統合
@@ -207,7 +289,8 @@ class CQLSearchEngine:
         step.execution_time = time.time() - start_time
         return step
     
-    def _execute_phrase_search(self, query: str, space_key: str, keywords: List[str] = None) -> SearchStep:
+    def _execute_phrase_search(self, query: str, space_key: str, keywords: List[str] = None, 
+                               hierarchy_filters: List[str] = None, include_deleted: bool = False) -> SearchStep:
         """フレーズ検索の実行（クリーンクエリ）"""
         step = SearchStep(
             step_number=3,
@@ -217,19 +300,21 @@ class CQLSearchEngine:
         
         start_time = time.time()
         try:
-            # キーワードが提供されている場合は、それを使用
+            # 基本のCQL条件を構築
             if keywords and len(keywords) > 0:
                 # 複数キーワードの場合はOR検索
                 if len(keywords) == 1:
-                    cql = f'text ~ "{keywords[0]}" and space = "{space_key}"'
+                    base_condition = f'text ~ "{keywords[0]}"'
                 else:
                     keyword_conditions = ' OR '.join([f'text ~ "{kw}"' for kw in keywords])
-                    cql = f'({keyword_conditions}) and space = "{space_key}"'
+                    base_condition = f'({keyword_conditions})'
             else:
                 # フォールバック: 汎用句を除去したクリーンクエリ
                 clean_query = self._clean_query_for_search(query)
-                cql = f'text ~ "{clean_query}" and space = "{space_key}"'
-                
+                base_condition = f'text ~ "{clean_query}"'
+            
+            # CQLクエリを構築（フィルタ条件を統合）
+            cql = self._build_cql_with_filters(base_condition, space_key, hierarchy_filters, include_deleted)
             step.cql_queries.append(cql)
             
             results = self.api_executor(cql)
