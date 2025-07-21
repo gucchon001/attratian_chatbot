@@ -14,10 +14,10 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.spec_bot_mvp.tools.confluence_indexer import ConfluenceIndexer
-from src.spec_bot_mvp.tools.confluence_tool import search_confluence_tool
-from src.spec_bot_mvp.config.settings import settings
-from src.spec_bot_mvp.utils.log_config import get_logger
+from spec_bot.tools.confluence_indexer import ConfluenceIndexer
+from spec_bot.tools.confluence_tool import search_confluence_tool
+from spec_bot.config.settings import settings
+from spec_bot.utils.log_config import get_logger
 
 logger = get_logger(__name__)
 

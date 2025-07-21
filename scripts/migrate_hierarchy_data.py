@@ -18,7 +18,7 @@ from datetime import datetime
 # プロジェクトルートを追加
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.spec_bot_mvp.utils.confluence_hierarchy_manager import ConfluenceHierarchyManager
+from spec_bot.utils.confluence_hierarchy_manager import ConfluenceHierarchyManager
 
 
 def migrate_existing_json():

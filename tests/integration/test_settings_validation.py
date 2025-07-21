@@ -11,7 +11,7 @@ from pathlib import Path
 # プロジェクトのルートパスを追加
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.spec_bot_mvp.config.settings import settings
+from spec_bot.config.settings import settings
 
 def test_settings_file_exists():
     """設定ファイルの存在確認テスト"""
@@ -107,7 +107,7 @@ def test_environment_variable_fallback():
         os.environ['GEMINI_API_KEY'] = test_gemini_key
         
         # 新しい設定インスタンスを作成して確認
-        from src.spec_bot_mvp.config.settings import Settings
+        from spec_bot.config.settings import Settings
         test_settings = Settings()
         
         # 環境変数が優先されているか確認

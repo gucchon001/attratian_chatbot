@@ -11,7 +11,7 @@ from pathlib import Path
 # プロジェクトのルートパスを追加
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.spec_bot_mvp.config.settings import settings
+from spec_bot.config.settings import settings
 
 def test_atlassian_settings_validation():
     """Atlassian設定の検証テスト"""

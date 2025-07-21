@@ -13,8 +13,8 @@ import time
 # srcディレクトリをパスに追加
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.spec_bot_mvp.core.agent import SpecBotAgent
-from src.spec_bot_mvp.utils.log_config import setup_logging
+from spec_bot.core.agent import SpecBotAgent
+from spec_bot.utils.log_config import setup_logging
 
 
 def test_enhanced_cql_priority():

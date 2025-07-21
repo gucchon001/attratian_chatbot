@@ -14,8 +14,8 @@ from unittest.mock import patch, MagicMock
 # プロジェクトのルートパスを追加
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.spec_bot_mvp.core.agent import SpecBotAgent
-from src.spec_bot_mvp.config.settings import settings
+from spec_bot.core.agent import SpecBotAgent
+from spec_bot.config.settings import settings
 
 
 class TestSpecBotAgentInitialization:
@@ -267,7 +267,7 @@ class TestSpecBotAgentErrorHandling:
         
         print("✅ 長文入力ハンドリング成功")
     
-    @patch('src.spec_bot_mvp.tools.jira_tool.search_jira_with_filters')
+    @patch('spec_bot.tools.jira_tool.search_jira_with_filters')
     def test_tool_error_handling(self, mock_jira_search, agent):
         """ツールエラー時のハンドリングテスト"""
         # ツールでエラーを発生させる

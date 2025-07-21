@@ -17,10 +17,10 @@ from dataclasses import dataclass
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.spec_bot_mvp.tools.confluence_tool import ConfluenceTool
-from src.spec_bot_mvp.tools.confluence_enhanced_search import ConfluenceEnhancedSearch
-from src.spec_bot_mvp.tools.confluence_indexer import ConfluenceIndexer
-from src.spec_bot_mvp.utils.log_config import get_logger
+from spec_bot.tools.confluence_tool import ConfluenceTool
+from spec_bot.tools.confluence_enhanced_search import ConfluenceEnhancedSearch
+from spec_bot.tools.confluence_indexer import ConfluenceIndexer
+from spec_bot.utils.log_config import get_logger
 
 logger = get_logger(__name__)
 

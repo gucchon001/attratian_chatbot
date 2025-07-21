@@ -4,7 +4,7 @@
 Confluenceスペース構造をファイルに出力するスクリプト
 """
 
-from src.spec_bot_mvp.tools.confluence_tool import get_confluence_space_structure
+from spec_bot.tools.confluence_tool import get_confluence_space_structure
 import datetime
 import os
 

@@ -12,8 +12,8 @@ from pathlib import Path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
-from src.spec_bot_mvp.tools.confluence_improved_mock_search import search_confluence_improved_chain
-from src.spec_bot_mvp.utils.log_config import setup_logging, get_logger
+from spec_bot.tools.confluence_improved_mock_search import search_confluence_improved_chain
+from spec_bot.utils.log_config import setup_logging, get_logger
 
 def analyze_output_quality(response: str) -> dict:
     """出力品質の分析"""
