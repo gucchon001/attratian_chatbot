@@ -13,8 +13,8 @@ from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
 
-from config.settings import settings
-from config.constants import prompt_manager
+from ..config.settings import settings
+from ..config.constants import prompt_manager
 from ..tools.jira_tool import search_jira_with_filters
 from ..tools.confluence_enhanced_cql_search import search_confluence_with_enhanced_cql
 from ..utils.log_config import get_logger

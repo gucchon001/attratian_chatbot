@@ -20,7 +20,7 @@ project_root = current_dir.parent.parent
 sys.path.insert(0, str(project_root))
 
 from spec_bot.core.agent import SpecBotAgent
-from config.settings import settings
+from ..config.settings import settings
 from spec_bot.tools.confluence_tool import get_confluence_page_hierarchy
 from spec_bot.tools.confluence_enhanced_cql_search import get_detailed_process_info
 from spec_bot.ui.hierarchy_filter_ui import HierarchyFilterUI
