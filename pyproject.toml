@@ -59,7 +59,7 @@ include = ["spec_bot*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --cov=src.spec_bot --cov-report=html --cov-report=term-missing"
+addopts = "-v --cov=src.spec_bot_mvp --cov-report=html --cov-report=term-missing"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
