@@ -18,9 +18,9 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 try:
-    from langchain.chains import LLMChain
     from langchain.prompts import PromptTemplate
     from langchain_google_genai import ChatGoogleGenerativeAI
+    from langchain_core.runnables import RunnableSequence
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     LANGCHAIN_AVAILABLE = False
@@ -62,57 +62,74 @@ class ResponseGenerationAgent:
             template=self._get_response_prompt_template()
         )
         
-        # LLMChain構築
-        self.chain = LLMChain(
-            llm=self.llm,
-            prompt=self.prompt,
-            verbose=True
-        )
+        # RunnableSequence構築 (最新LangChain API)
+        self.chain = self.prompt | self.llm
     
     def _get_response_prompt_template(self) -> str:
-        """回答生成用プロンプトテンプレート"""
-        return """あなたは仕様書作成支援の専門AIアシスタントです。
-ユーザーの質問に対して、提供された検索結果を元に包括的で実用的な回答を生成してください。
+        """CLIENTTOMO仕様書特化 回答生成プロンプト（日本語最適化版）"""
+        return """あなたはCLIENTTOMOプロジェクト専用の仕様書作成支援AIアシスタントです。
+開発者・PM・CSチームが、複雑な機能仕様を素早く理解し、実装やサポートに活用できる実用的な回答を生成してください。
+
+【対象プロジェクト】CLIENTTOMO - 企業向けクライアント管理システム
+【検索対象】全仕様書・技術文書・議事録（CLIENTTOMOスペース）
+【専門領域】ログイン・認証、UI/UX、データベース、API設計、業務フロー
 
 【ユーザー質問】
 {user_query}
 
-【検索結果】
+【検索結果（3段階CQL検索による高精度マッチング結果）】
 {search_results}
 
-【回答生成の指針】
-1. **完全性**: 検索結果の重要な情報をもれなく統合する
-2. **構造化**: 見出し、箇条書きを活用して読みやすく整理する  
-3. **実用性**: 開発者が具体的にアクションを取れる情報を優先する
-4. **文脈理解**: ユーザーの質問意図を正確に理解して回答する
-5. **信頼性**: 検索結果に基づかない推測や憶測は避ける
+【CLIENTTOMO専用回答生成ガイドライン】
+1. **機能理解重視**: 「なぜその仕様になったのか」背景・意図を説明
+2. **実装指向**: 開発者が即座にコーディングに着手できる具体性
+3. **業務連携**: PM・CS・マーケティングとの連携ポイントを明示
+4. **動的仕様**: UI挙動・モーダル・フロー等の動的な仕様を重視
+5. **関連性可視化**: 他機能・画面・データとの関連性を明確化
+6. **品質基準**: CLIENTTOMOの品質基準・セキュリティ要件準拠
 
-【回答フォーマット】
-## 📋 質問への回答
+【専用回答フォーマット】
+## 🎯 機能概要
+[該当機能の目的・役割・ユーザー価値を簡潔に説明]
 
-[ユーザー質問に対する直接的な回答]
+## 🔧 実装仕様
+[開発者向け技術詳細：API、データ構造、画面遷移、バリデーション等]
 
-## 🔍 詳細情報
+## 💼 業務フロー
+[PM・CS向け業務観点：ユーザー操作手順、エラーケース、サポート時の注意点]
 
-[検索結果から得られた具体的な詳細]
+## 🔗 関連機能・依存関係
+[この機能に関連する他の機能・画面・データベースとの連携ポイント]
 
-## 📚 関連情報・参考資料
+## ⚠️ 注意事項・制約
+[実装時の制約、既知の課題、将来の改善予定、セキュリティ考慮事項]
 
-[関連するチケット、ページ、仕様書等の情報]
+## 📚 参考文献・情報源
+[以下の形式で、回答の根拠となった具体的なページを明記:]
+📄 **[ページタイトル]**
+🔗 [完全なURL]
 
-## 💡 推奨アクション
+[検索結果から得られた各ページについて、上記形式で列挙]
 
-[この情報を基にユーザーが取るべき次のステップ]
+## 🎯 さらなる深掘り・関連情報
+[ユーザーが次に知りたそうな関連キーワード・質問を提案:]
+- 「[関連キーワード1]について詳しく知りたい」
+- 「[関連機能2]との連携方法を確認したい」  
+- 「[実装手順3]の具体的な手順を見たい」
+
+---
+**信頼度**: [高/中/低] - [検索結果の品質と関連性に基づく判断理由]
 
 回答:"""
 
-    def generate_response(self, search_results: List[Dict], user_query: str) -> str:
+    def generate_response(self, search_results: List[Dict], user_query: str, memory_context: str = "") -> str:
         """
         検索結果を統合して最終回答を生成
         
         Args:
             search_results: 検索結果リスト
             user_query: ユーザー質問
+            memory_context: 前回の検索コンテキスト情報
             
         Returns:
             統合された最終回答
@@ -121,20 +138,174 @@ class ResponseGenerationAgent:
             # 検索結果を構造化文字列に変換
             formatted_results = self._format_search_results(search_results)
             
-            logger.info("💡 回答生成開始: クエリ='%s', 結果数=%d", user_query, len(search_results))
+            # メモリーコンテキストがある場合は質問を拡張
+            enhanced_query = user_query
+            if memory_context:
+                enhanced_query = f"{user_query}\n\n【前回のコンテキスト】{memory_context}"
             
-            # LLMChainで回答生成
-            response = self.chain.run(
-                search_results=formatted_results,
-                user_query=user_query
-            )
+            logger.info("💡 回答生成開始: クエリ='%s', 結果数=%d, メモリー=%s", user_query, len(search_results), bool(memory_context))
             
-            logger.info("✅ 回答生成完了: 文字数=%d", len(response))
-            return response
+            # RunnableSequenceで回答生成 (最新LangChain API)
+            result = self.chain.invoke({
+                "search_results": formatted_results,
+                "user_query": enhanced_query
+            })
+            
+            # AIMessageから文字列コンテンツを抽出
+            response = result.content if hasattr(result, 'content') else str(result)
+            
+            # 参照元情報と深掘り提案を追加
+            enhanced_response = self._enhance_response_with_sources(response, search_results, user_query)
+            
+            logger.info("✅ 回答生成完了: 文字数=%d", len(enhanced_response))
+            return enhanced_response
             
         except Exception as e:
             logger.error("❌ 回答生成失敗: %s", str(e))
             return self._generate_error_response(user_query, str(e))
+    
+    def _enhance_response_with_sources(self, response: str, search_results: List[Dict], user_query: str) -> str:
+        """
+        回答に参照元情報と深掘り提案を追加
+        
+        Args:
+            response: 生成された回答
+            search_results: 検索結果リスト
+            user_query: ユーザー質問
+            
+        Returns:
+            拡張された回答
+        """
+        # 参照元情報を生成
+        sources_section = self._generate_sources_section(search_results)
+        
+        # 深掘り提案を生成
+        followup_section = self._generate_followup_suggestions(search_results, user_query)
+        
+        # 回答に追加
+        if sources_section:
+            response += f"\n\n{sources_section}"
+        
+        if followup_section:
+            response += f"\n\n{followup_section}"
+            
+        return response
+    
+    def _generate_sources_section(self, search_results: List[Dict]) -> str:
+        """
+        参照元情報セクションを生成
+        
+        Args:
+            search_results: 検索結果リスト
+            
+        Returns:
+            参照元情報のマークダウン文字列
+        """
+        if not search_results:
+            return ""
+        
+        sources_lines = ["## 📚 参考文献・情報源"]
+        
+        for i, result in enumerate(search_results, 1):
+            title = result.get('title', f'文書 {i}')
+            url = result.get('url', result.get('link', ''))
+            source = result.get('source', 'Unknown')
+            
+            if url:
+                sources_lines.append(f"📄 **{title}**")
+                sources_lines.append(f"🔗 {url}")
+                sources_lines.append("")  # 空行
+            else:
+                # URLがない場合はソース情報のみ
+                sources_lines.append(f"📄 **{title}** ({source})")
+                sources_lines.append("")
+        
+        return "\n".join(sources_lines)
+    
+    def _generate_followup_suggestions(self, search_results: List[Dict], user_query: str) -> str:
+        """
+        さらなる深掘り提案セクションを生成
+        
+        Args:
+            search_results: 検索結果リスト  
+            user_query: ユーザー質問
+            
+        Returns:
+            深掘り提案のマークダウン文字列
+        """
+        # ユーザー質問から関連キーワードを抽出
+        query_keywords = self._extract_query_keywords(user_query)
+        
+        # 検索結果から関連キーワードを抽出
+        result_keywords = self._extract_result_keywords(search_results)
+        
+        # 関連提案を生成
+        suggestions = []
+        
+        # 基本的な深掘り提案
+        if "ログイン" in user_query:
+            suggestions.extend([
+                "ログイン機能の会員機能について知りたい",
+                "ログイン認証のセキュリティ仕様を確認したい",
+                "ログイン後の画面遷移フローを見たい"
+            ])
+        elif "API" in user_query:
+            suggestions.extend([
+                "API認証方式の詳細仕様について知りたい",
+                "APIエラーハンドリングの実装方法を確認したい",
+                "API利用制限・レート制限について確認したい"
+            ])
+        elif "UI" in user_query or "画面" in user_query:
+            suggestions.extend([
+                "UI設計ガイドラインについて知りたい",
+                "画面遷移の全体フローを確認したい",
+                "レスポンシブ対応の実装仕様を見たい"
+            ])
+        else:
+            # 汎用的な提案
+            suggestions.extend([
+                f"{query_keywords[0] if query_keywords else '関連機能'}の技術仕様を詳しく知りたい",
+                f"{query_keywords[0] if query_keywords else '該当機能'}の運用手順を確認したい",
+                f"{query_keywords[0] if query_keywords else '関連システム'}との連携方法を見たい"
+            ])
+        
+        if not suggestions:
+            return ""
+        
+        lines = ["## 🎯 さらなる深掘り・関連情報"]
+        for suggestion in suggestions[:3]:  # 最大3つに制限
+            lines.append(f'- 「{suggestion}」')
+        
+        return "\n".join(lines)
+    
+    def _extract_query_keywords(self, user_query: str) -> List[str]:
+        """ユーザー質問からキーワードを抽出"""
+        keywords = []
+        common_keywords = ["ログイン", "認証", "API", "UI", "画面", "機能", "仕様", "設計", "実装"]
+        
+        for keyword in common_keywords:
+            if keyword in user_query:
+                keywords.append(keyword)
+        
+        return keywords
+    
+    def _extract_result_keywords(self, search_results: List[Dict]) -> List[str]:
+        """検索結果からキーワードを抽出"""
+        keywords = set()
+        
+        for result in search_results:
+            title = result.get('title', '')
+            content = result.get('content', '')
+            
+            # タイトルと内容から簡単なキーワード抽出
+            text = f"{title} {content}".lower()
+            common_terms = ["認証", "セキュリティ", "データベース", "フロント", "バック", "テスト"]
+            
+            for term in common_terms:
+                if term in text:
+                    keywords.add(term)
+        
+        return list(keywords)
     
     def _format_search_results(self, search_results: List[Dict]) -> str:
         """
