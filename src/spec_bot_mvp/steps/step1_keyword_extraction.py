@@ -3,6 +3,7 @@ Step1: キーワード抽出機能
 
 自然言語クエリからJQL/CQL検索キーワードを抽出する
 - Gemini AI による高精度日本語解析
+- CLIENTTOMO特化辞書による精度向上
 - フォールバック: ルールベースキーワード抽出
 - 検索意図分析（仕様書、バグ報告、進捗確認等）
 """
@@ -22,33 +23,75 @@ try:
 except ImportError:
     ChatGoogleGenerativeAI = None
 
-from src.spec_bot_mvp.config.settings import settings
+from src.spec_bot_mvp.config.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 class KeywordExtractor:
-    """Step1: キーワード抽出エンジン"""
+    """Step1: キーワード抽出エンジン（CLIENTTOMO特化版）"""
     
     def __init__(self):
+        self.settings = Settings()  # Settingsインスタンス生成
         self.gemini_available = self._init_gemini()
+        self._init_clienttomo_dictionary()
         
     def _init_gemini(self) -> bool:
         """Gemini AI初期化"""
-        if not ChatGoogleGenerativeAI or not settings.google_api_key:
+        if not ChatGoogleGenerativeAI or not self.settings.google_api_key:
             logger.warning("Gemini API利用不可 - ルールベース抽出にフォールバック")
             return False
             
         try:
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
-                google_api_key=settings.google_api_key,
-                temperature=0.1
+                model=self.settings.gemini_model,  # settings.iniから読み込み
+                google_api_key=self.settings.google_api_key,
+                temperature=self.settings.gemini_temperature  # settings.iniから読み込み
             )
-            logger.info("Gemini AI初期化成功")
+            logger.info(f"Gemini AI初期化成功: {self.settings.gemini_model}")
             return True
         except Exception as e:
             logger.error(f"Gemini AI初期化失敗: {e}")
             return False
+    
+    def _init_clienttomo_dictionary(self):
+        """CLIENTTOMO特化辞書初期化（精度向上）"""
+        
+        # CLIENTTOMO専用キーワード辞書
+        self.clienttomo_keywords = {
+            # 認証・ログイン関連
+            "認証系": ["ログイン", "ログアウト", "認証", "パスワード", "セッション", "トークン", "OAuth"],
+            "会員系": ["会員", "ユーザー", "アカウント", "プロフィール", "登録", "退会"],
+            "企業系": ["クライアント企業", "法人", "組織", "管理者", "全体管理者"],
+            
+            # 機能系キーワード
+            "UI系": ["画面", "フォーム", "ボタン", "モーダル", "ポップアップ", "メニュー", "ナビゲーション"],
+            "データ系": ["データベース", "API", "JSON", "CSV", "エクスポート", "インポート"],
+            "通知系": ["メール", "通知", "アラート", "リマインダー", "配信"],
+            
+            # 業務系キーワード
+            "決済系": ["決済", "支払い", "課金", "料金", "プラン", "サブスクリプション"],
+            "レポート系": ["レポート", "統計", "分析", "ダッシュボード", "グラフ", "集計"],
+            "設定系": ["設定", "配置", "パラメータ", "環境", "デプロイ", "リリース"]
+        }
+        
+        # 除外すべき汎用語（検索精度低下要因）
+        self.excluded_terms = {
+            "汎用動詞": ["教えて", "確認", "調べて", "見つけて", "探して", "検索して"],
+            "汎用助詞": ["について", "に関する", "の件", "の内容", "の詳細"],
+            "汎用名詞": ["情報", "データ", "内容", "詳細", "状況", "方法"],
+            "質問表現": ["どうやって", "なぜ", "いつ", "どこで", "どれ", "何"]
+        }
+        
+        # 複合語分解辞書
+        self.compound_rules = {
+            "ログイン機能": ["ログイン機能", "ログイン", "認証"],
+            "会員登録": ["会員登録", "会員", "登録", "アカウント"],
+            "クライアント企業": ["クライアント企業", "クライアント", "企業", "法人"],
+            "全体管理者": ["全体管理者", "管理者", "アドミン"],
+            "UI画面": ["UI画面", "UI", "画面", "インターフェース"],
+            "API設計": ["API設計", "API", "設計", "インターフェース"],
+            "データベース": ["データベース", "DB", "データ", "テーブル"]
+        }
     
     def extract_keywords(self, user_query: str) -> Dict[str, Any]:
         """
@@ -75,45 +118,70 @@ class KeywordExtractor:
         return self._extract_with_rules(user_query)
     
     def _extract_with_gemini(self, user_query: str) -> Dict[str, Any]:
-        """Gemini AIによるキーワード抽出（仕様書準拠）"""
+        """Gemini AIによるキーワード抽出（CLIENTTOMO特化版v2.0）"""
+        
+        # CLIENTTOMO特化プロンプト（精度向上版）
         prompt = f"""
-あなたはJira/Confluence検索専門のキーワード抽出AIです。
-仕様書に従って、ユーザーの自然言語クエリから効果的な検索キーワードを抽出してください。
+あなたはCLIENTTOMOプロジェクト専用の上級キーワード抽出AIです。
+88%の検索精度を92%+に向上させるため、CLIENTTOMO特化の高精度抽出を実行してください。
 
 入力クエリ: "{user_query}"
 
-## 抽出ルール（仕様書準拠）:
+## CLIENTTOMO専用抽出ルール（v2.0強化版）:
 
-### 1. 複合語分解
-- 「ログイン機能」 → [ログイン機能, ログイン]
-- 「会員登録フロー」 → [会員登録フロー, 会員登録]
-- 「API設計書」 → [API設計書, API, 設計書]
-- 「UI画面仕様」 → [UI画面仕様, UI, 画面, 仕様]
+### 1. CLIENTTOMO専用複合語分解
+以下の優先ルールで分解してください:
+- 「ログイン機能」 → [ログイン機能, ログイン, 認証]
+- 「会員登録」 → [会員登録, 会員, 登録, アカウント]
+- 「クライアント企業」 → [クライアント企業, クライアント, 企業, 法人]
+- 「全体管理者」 → [全体管理者, 管理者, アドミン]
+- 「UI画面」 → [UI画面, UI, 画面, インターフェース]
+- 「API設計」 → [API設計, API, 設計, インターフェース]
 
-### 2. 助詞の自動除去
-除去対象:
-- 助詞: について、～は、を、が、に、で、から、まで、教えて
-- 動詞: 教えて、整理して、抽出して、確認して、見つけて
-- 冗長表現: ～について詳しく、～の内容を、～に関する情報
+### 2. 高精度除外処理
+以下は検索精度を下げるため厳格に除去:
+- 汎用動詞: 教えて、確認、調べて、見つけて、探して、検索して
+- 汎用助詞: について、に関する、の件、の内容、の詳細  
+- 汎用名詞: 情報、データ、内容、詳細、状況、方法
+- 質問表現: どうやって、なぜ、いつ、どこで、どれ、何
 
-### 3. 最大4キーワード制限
-重要度順で最大4つまで抽出してください。
+### 3. CLIENTTOMO業務ドメイン強化
+以下のドメイン知識を活用してキーワード拡張:
+- 認証系: ログイン、ログアウト、認証、パスワード、セッション、トークン
+- 会員系: 会員、ユーザー、アカウント、プロフィール、登録、退会
+- 企業系: クライアント企業、法人、組織、管理者、全体管理者
+- UI系: 画面、フォーム、ボタン、モーダル、ポップアップ、メニュー
+- データ系: データベース、API、JSON、CSV、エクスポート、インポート
+- 決済系: 決済、支払い、課金、料金、プラン、サブスクリプション
 
-### 4. 判定専用語も含める
-以下の語も抽出対象に含めてください（後でデータソース判定に使用）:
-- Confluence判定語: 仕様, 詳細, 設計書, API, 要件, 実装, フロー, 画面, UI
-- Jira判定語: チケット, 進捗, バグ, 不具合, タスク, issue, 対応状況, 修正
+### 4. 最適化された4キーワード選択
+重要度順で最大4つ、以下の優先順位で選択:
+1. 業務固有キーワード（最高優先度）
+2. 機能特定キーワード
+3. 技術キーワード
+4. 補完キーワード
+
+### 5. 検索意図高精度分析
+以下の6カテゴリで分類:
+- 機能照会: 特定機能の仕様・動作確認
+- 手順確認: 実装・操作手順の確認
+- 設計詳細: アーキテクチャ・技術詳細
+- トラブル対応: バグ・不具合の調査
+- 仕様変更: 変更・更新に関する情報
+- 全般質問: 概要・一般的な質問
 
 以下の形式でJSONを出力してください:
 {{
-    "primary_keywords": ["抽出キーワード1", "抽出キーワード2", "抽出キーワード3", "抽出キーワード4"],
-    "search_intent": "検索意図（仕様確認/バグ調査/進捗確認/機能理解等）",
-    "extraction_method": "gemini",
+    "primary_keywords": ["最重要キーワード1", "重要キーワード2", "補完キーワード3", "技術キーワード4"],
+    "search_intent": "具体的な検索意図（6カテゴリから選択）",
+    "extraction_method": "gemini_clienttomo_v2",
+    "domain_category": "該当する業務ドメイン",
+    "confidence_score": 0.95,
     "compound_words_detected": ["検出された複合語1", "検出された複合語2"],
-    "removed_particles": ["除去された助詞・動詞1", "除去された助詞・動詞2"]
+    "removed_particles": ["除去された汎用語1", "除去された汎用語2"]
 }}
 
-重要: primary_keywordsは必ず4個以下にしてください。
+重要: CLIENTTOMO業務ドメインの専門知識を最大限活用し、検索精度92%+を目指してください。
 """
         
         response = self.llm.invoke(prompt)
@@ -143,11 +211,130 @@ class KeywordExtractor:
             raise
     
     def _extract_with_rules(self, user_query: str) -> Dict[str, Any]:
-        """ルールベースキーワード抽出（フォールバック）"""
+        """ルールベースキーワード抽出（CLIENTTOMO特化フォールバック）"""
         
-        # 基本的なキーワード抽出
-        primary_keywords = []
-        secondary_keywords = []
+        logger.info("CLIENTTOMO特化ルールベース抽出実行")
+        
+        # 前処理: 汎用語除去
+        cleaned_query = self._remove_generic_terms(user_query)
+        
+        # CLIENTTOMO特化キーワード抽出
+        primary_keywords = self._extract_clienttomo_keywords(cleaned_query)
+        
+        # 複合語分解処理
+        expanded_keywords = self._expand_compound_words(primary_keywords, cleaned_query)
+        
+        # 最大4キーワード制限
+        final_keywords = expanded_keywords[:4]
+        
+        # 検索意図分析
+        search_intent = self._analyze_search_intent_rules(user_query)
+        
+        return {
+            "primary_keywords": final_keywords,
+            "secondary_keywords": [],
+            "search_intent": search_intent,
+            "extraction_method": "rule_based_clienttomo",
+            "domain_category": self._categorize_domain(final_keywords),
+            "confidence_score": 0.75,  # ルールベースの信頼度
+            "compound_words_detected": self._detect_compounds(user_query),
+            "removed_particles": self._get_removed_terms(user_query, cleaned_query)
+        }
+    
+    def _remove_generic_terms(self, query: str) -> str:
+        """汎用語の除去"""
+        cleaned = query
+        for category, terms in self.excluded_terms.items():
+            for term in terms:
+                cleaned = cleaned.replace(term, "")
+        return cleaned.strip()
+    
+    def _extract_clienttomo_keywords(self, query: str) -> List[str]:
+        """CLIENTTOMO特化キーワード抽出"""
+        keywords = []
+        
+        # 各ドメインからキーワード検出
+        for domain, domain_keywords in self.clienttomo_keywords.items():
+            for keyword in domain_keywords:
+                if keyword in query:
+                    keywords.append(keyword)
+        
+        # 重複除去・重要度順ソート
+        unique_keywords = list(dict.fromkeys(keywords))
+        
+        # CLIENTTOMO重要度順でソート
+        priority_order = ["ログイン", "会員", "クライアント企業", "管理者", "API", "UI", "データベース"]
+        sorted_keywords = []
+        
+        for priority_word in priority_order:
+            for keyword in unique_keywords:
+                if priority_word in keyword and keyword not in sorted_keywords:
+                    sorted_keywords.append(keyword)
+        
+        # 残りのキーワード追加
+        for keyword in unique_keywords:
+            if keyword not in sorted_keywords:
+                sorted_keywords.append(keyword)
+        
+        return sorted_keywords
+    
+    def _expand_compound_words(self, keywords: List[str], query: str) -> List[str]:
+        """複合語分解による拡張"""
+        expanded = keywords.copy()
+        
+        for compound, expansions in self.compound_rules.items():
+            if compound in query:
+                for expansion in expansions:
+                    if expansion not in expanded:
+                        expanded.append(expansion)
+        
+        return expanded
+    
+    def _analyze_search_intent_rules(self, query: str) -> str:
+        """ルールベース検索意図分析"""
+        intent_patterns = {
+            "機能照会": ["機能", "動作", "仕様", "どう", "何"],
+            "手順確認": ["手順", "方法", "やり方", "操作", "実装"],
+            "設計詳細": ["設計", "アーキテクチャ", "構造", "API", "データベース"],
+            "トラブル対応": ["エラー", "バグ", "不具合", "問題", "トラブル"],
+            "仕様変更": ["変更", "更新", "修正", "改善", "リリース"],
+            "全般質問": ["概要", "全体", "一般", "基本", "について"]
+        }
+        
+        for intent, patterns in intent_patterns.items():
+            for pattern in patterns:
+                if pattern in query:
+                    return intent
+        
+        return "全般質問"
+    
+    def _categorize_domain(self, keywords: List[str]) -> str:
+        """業務ドメイン分類"""
+        domain_scores = {}
+        
+        for domain, domain_keywords in self.clienttomo_keywords.items():
+            score = sum(1 for keyword in keywords if keyword in domain_keywords)
+            if score > 0:
+                domain_scores[domain] = score
+        
+        return max(domain_scores.items(), key=lambda x: x[1])[0] if domain_scores else "一般"
+    
+    def _detect_compounds(self, query: str) -> List[str]:
+        """複合語検出"""
+        detected = []
+        for compound in self.compound_rules.keys():
+            if compound in query:
+                detected.append(compound)
+        return detected
+    
+    def _get_removed_terms(self, original: str, cleaned: str) -> List[str]:
+        """除去された語の取得"""
+        removed = []
+        for category, terms in self.excluded_terms.items():
+            for term in terms:
+                if term in original and term not in cleaned:
+                    removed.append(term)
+        return removed
         
         # 技術用語辞書
         tech_terms = {

@@ -46,26 +46,39 @@ class FallbackSearchAgent:
             raise ImportError("LangChain関連パッケージが必要です: pip install langchain langchain-google-genai")
         
         self.settings = Settings()
-        self.api_client = AtlassianAPIClient(
-            jira_url=self.settings.jira_url,
-            jira_username=self.settings.jira_username,
-            jira_token=self.settings.jira_api_token,
-            confluence_url=self.settings.confluence_url,
-            confluence_username=self.settings.confluence_username,
-            confluence_token=self.settings.confluence_api_token
-        )
+        
+        # AtlassianAPIClient初期化（設定が不完全な場合はNoneに設定）
+        try:
+            if (self.settings.jira_url and self.settings.confluence_url and 
+                self.settings.jira_api_token and self.settings.confluence_api_token):
+                self.api_client = AtlassianAPIClient(
+                    jira_url=self.settings.jira_url,
+                    jira_username=self.settings.jira_username,
+                    jira_token=self.settings.jira_api_token,
+                    confluence_url=self.settings.confluence_url,
+                    confluence_username=self.settings.confluence_username,
+                    confluence_token=self.settings.confluence_api_token
+                )
+                logger.info("✅ AtlassianAPIClient初期化成功")
+            else:
+                self.api_client = None
+                logger.warning("⚠️ Atlassian API設定不完全 - フォールバック検索無効")
+        except Exception as e:
+            self.api_client = None
+            logger.error(f"❌ AtlassianAPIClient初期化失敗: {e}")
         self._init_react_agent()
         logger.info("✅ FallbackSearchAgent初期化完了")
     
     def _init_react_agent(self):
         """ReAct Agent初期化"""
-        # Gemini LLM設定（柔軟性重視）
+        # Gemini LLM設定（settings.ini準拠、柔軟性重視）
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+            model=self.settings.gemini_model,  # settings.iniから読み込み
             google_api_key=self.settings.google_api_key,
-            temperature=0.7,  # 柔軟性重視
-            max_output_tokens=2048
+            temperature=self.settings.gemini_temperature,  # settings.iniから読み込み
+            max_output_tokens=self.settings.gemini_max_tokens  # settings.iniから読み込み
         )
+        logger.info(f"✅ FallbackSearchAgent LLM初期化: {self.settings.gemini_model}")
         
         # フォールバック検索ツール群
         self.tools = [
@@ -104,33 +117,60 @@ class FallbackSearchAgent:
     
     def _get_react_prompt(self) -> PromptTemplate:
         """ReAct Agent用プロンプトテンプレート"""
-        template = """あなたは仕様書検索の専門家AIエージェントです。
-固定検索パイプラインで十分な結果が得られなかった場合に、より柔軟で創造的な検索アプローチを実行します。
+        template = """あなたはCLIENTTOMOプロジェクト専用の探索的検索エージェントです。
+固定の3段階CQL検索パイプラインで十分な関連仕様書が見つからなかった場合に、創造的で多角的な検索戦略を実行して、必要な情報を発見します。
 
-利用可能なツール:
+【専門知識】CLIENTTOMO企業向けクライアント管理システム
+- ログイン・認証機能（会員、クライアント企業、全体管理者）
+- UI/UX設計（モーダル、画面遷移、レスポンシブ対応）
+- データベース設計・API仕様・業務フロー
+- セキュリティ要件・パフォーマンス要件
+
+【利用可能なツール】
 {tools}
 
-ユーザーからの質問: {input}
+【ツール名一覧】{tool_names}
 
-あなたの使命は、以下の手順で最適な検索結果を見つけることです：
+【検索失敗したユーザー質問】{input}
 
-1. **問題分析**: なぜ固定検索で結果が得られなかったかを分析
-2. **戦略立案**: 異なる検索アプローチを複数検討  
-3. **試行実行**: ツールを使って様々な検索を試行
-4. **結果評価**: 各検索結果の品質と関連性を評価
-5. **最終統合**: 最も有用な情報を統合して提供
+【探索的検索戦略（CLIENTTOMO特化）】
+あなたの使命は、以下の戦略で隠れた関連仕様書を発見することです：
 
-Think: 現在の状況を分析し、次に何をすべきか考えてください
-Action: 実行するツール名
-Action Input: ツールへの入力
-Observation: ツールの実行結果
+1. **失敗要因分析**: 
+   - 汎用キーワードで検索していないか？
+   - CLIENTTOMO固有の専門用語を見逃していないか？
+   - 機能間の関連性を考慮できているか？
 
-この思考→行動→観察のサイクルを、満足のいく結果が得られるまで繰り返してください。
+2. **キーワード展開戦略**:
+   - 同義語・類似機能での検索（例：「ログイン」→「認証」「サインイン」）
+   - 機能分解検索（例：「ログイン機能」→「パスワード」「セッション」「権限」）
+   - 業務視点検索（例：技術仕様→業務フロー→UI設計の順で探索）
+
+3. **階層・関連検索**:
+   - 上位機能から下位機能への絞り込み
+   - 関連画面・関連API・関連データベースからの逆引き検索
+   - 過去のバージョン・関連議事録からの情報補完
+
+4. **品質評価基準**:
+   - 80%以上の関連度を目標（SPEC-DS-002基準）
+   - 実装可能な具体性があるか
+   - 最新の仕様書か（古い情報の除外）
+
+【ReAct実行形式】
+
+Thought: [現在の状況を分析し、CLIENTTOMO専門知識を活用した次の戦略を立案]
+Action: [実行するツール名]
+Action Input: [CLIENTTOMO特化キーワードでの検索クエリ]
+Observation: [検索結果の品質と関連度を評価]
+
+この思考→行動→観察のサイクルを、CLIENTTOMOの品質基準（80%関連度）を満たす仕様書が見つかるまで繰り返してください。
+
+Final Answer: [発見した仕様書の要約と、今後の類似検索での改善提案]
 
 {agent_scratchpad}"""
 
         return PromptTemplate(
-            input_variables=["input", "agent_scratchpad", "tools"],
+            input_variables=["input", "agent_scratchpad", "tools", "tool_names"],
             template=template
         )
     

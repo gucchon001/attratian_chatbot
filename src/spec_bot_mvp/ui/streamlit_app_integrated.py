@@ -705,7 +705,23 @@ def render_chat_interface():
     # チャット履歴表示
     for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            # ユーザーメッセージの場合
+            if message["role"] == "user":
+                st.markdown(message["content"])
+                
+                # 次のメッセージ（アシスタント回答）の思考プロセスを質問の下に表示
+                if i + 1 < len(st.session_state.messages):
+                    next_message = st.session_state.messages[i + 1]
+                    if next_message["role"] == "assistant" and "thinking_process" in next_message:
+                        thinking_data = next_message["thinking_process"]
+                        if thinking_data:  # 思考プロセスデータが存在する場合
+                            with st.expander("🧠 思考プロセスを表示", expanded=False):
+                                display_saved_thinking_process(thinking_data)
+            
+            # アシスタントメッセージの場合
+            elif message["role"] == "assistant":
+                st.markdown(message["content"])
+                # 思考プロセスはユーザーメッセージの下に既に表示済みなので、ここでは表示しない
             
             # アシスタントメッセージに深掘り提案ボタンを追加
             if message["role"] == "assistant" and "content" in message:
@@ -1440,7 +1456,9 @@ CLIENTTOMOシステムのログイン機能は、多層認証システムを採�
             "search_strategy": "Confluence専用3段階CQL検索",
             "extracted_keywords": extracted_keywords,
             "question_type": question_type,
-            "search_strategy_used": search_strategy
+            "search_strategy_used": search_strategy,
+            # 詳細プロセスデータを追加（リアルタイム表示と同期）
+            "process_stages": thinking_ui.process_stages.copy()  # 詳細データを保存
         }
         
         return {
@@ -1622,6 +1640,143 @@ def calculate_freshness_score() -> float:
     active_project_bonus = 0.08
     
     return round(base_freshness + active_project_bonus, 2)
+
+def display_saved_thinking_process(thinking_data: Dict[str, Any]) -> None:
+    """
+    保存された思考プロセスデータを統合表示形式で復元
+    
+    画面設計書v1.8準拠の統合思考プロセス表示として実装
+    """
+    if not thinking_data:
+        st.info("💭 思考プロセスデータが利用できません")
+        return
+    
+    try:
+        # process_stagesが保存されている場合は詳細表示を優先
+        if "process_stages" in thinking_data:
+            st.markdown("### 🤖 思考プロセス詳細（復元）")
+            
+            # リアルタイム表示と同じ形式で復元表示
+            process_stages = thinking_data["process_stages"]
+            completed_stages = sum(1 for stage in process_stages if stage["status"] == "completed")
+            total_stages = len(process_stages)
+            
+            # 進行度表示
+            progress = completed_stages / total_stages if total_stages > 0 else 0.0
+            st.progress(progress, text=f"処理完了: {completed_stages}/{total_stages}段階")
+            
+            # 各段階の詳細表示（リアルタイム表示と同じ形式）
+            for i, stage in enumerate(process_stages):
+                status = stage["status"]
+                name = stage["name"]
+                
+                # ステータス別のアイコンと色
+                if status == "completed":
+                    icon = "✅"
+                    color = "#28a745"  # 緑
+                elif status == "in_progress":
+                    icon = "🔄"
+                    color = "#007bff"  # 青
+                elif status == "pending":
+                    icon = "⏳"
+                    color = "#6c757d"  # グレー
+                else:
+                    icon = "❌"
+                    color = "#dc3545"  # 赤
+                
+                # 段階表示（復元版）
+                col1, col2 = st.columns([1, 4])
+                
+                with col1:
+                    st.markdown(f'<div style="color: {color}; font-size: 20px; text-align: center;">{icon}</div>', 
+                               unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f'<div style="color: {color}; font-weight: bold;">{name}</div>', 
+                               unsafe_allow_html=True)
+                    
+                    # 詳細情報（完了時のみ）
+                    if status == "completed" and "details" in stage:
+                        details = stage["details"]
+                        detail_items = []
+                        
+                        if "execution_time" in details:
+                            detail_items.append(f"⏱️ {details['execution_time']:.2f}秒")
+                        
+                        if "result_count" in details:
+                            detail_items.append(f"📊 {details['result_count']}件")
+                        
+                        if "confidence" in details:
+                            detail_items.append(f"🎯 {details['confidence']}")
+                        
+                        if "strategy" in details:
+                            detail_items.append(f"⚡ {details['strategy']}")
+                        
+                        # その他の詳細情報を表示
+                        for key, value in details.items():
+                            if key not in ["execution_time", "result_count", "confidence", "strategy"]:
+                                detail_items.append(f"{key}: {value}")
+                        
+                        if detail_items:
+                            st.markdown(f'<div style="color: #6c757d; font-size: 12px;">{" | ".join(detail_items)}</div>', 
+                                       unsafe_allow_html=True)
+            
+            # 総合情報
+            st.markdown("---")
+            total_time = thinking_data.get("total_execution_time", "不明")
+            final_quality = thinking_data.get("final_quality_score", "不明")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("総実行時間", total_time)
+            with col2:
+                st.metric("最終品質スコア", final_quality)
+                
+        else:
+            # 詳細データがない場合は従来の簡易表示
+            st.markdown("### 🤖 思考プロセス詳細（簡易版）")
+            
+            # 実行時間とステージ完了情報
+            total_time = thinking_data.get("total_execution_time", "不明")
+            stages_completed = thinking_data.get("stages_completed", 0)
+            final_quality = thinking_data.get("final_quality_score", "不明")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("総実行時間", total_time)
+            with col2:
+                st.metric("完了段階", f"{stages_completed}/5")
+            with col3:
+                st.metric("最終品質スコア", final_quality)
+            
+            st.markdown("---")
+            
+            # 抽出されたキーワード
+            keywords = thinking_data.get("extracted_keywords", [])
+            if keywords:
+                st.markdown("**🔍 抽出キーワード:**")
+                st.write(", ".join(keywords))
+            
+            # 質問分類
+            question_type = thinking_data.get("question_type", "不明")
+            st.markdown(f"**📝 質問タイプ:** {question_type}")
+            
+            # 検索戦略
+            search_strategy = thinking_data.get("search_strategy_used", thinking_data.get("search_strategy", "不明"))
+            st.markdown(f"**⚡ 検索戦略:** {search_strategy}")
+            
+            # 追加情報があれば表示
+            if "search_results_count" in thinking_data:
+                st.markdown(f"**📊 検索結果数:** {thinking_data['search_results_count']}件")
+        
+        # デバッグ情報（詳細データ構造）
+        with st.expander("🔧 デバッグ情報", expanded=False):
+            st.json(thinking_data)
+        
+    except Exception as e:
+        st.error(f"思考プロセス表示中にエラーが発生しました: {str(e)}")
+        st.info("💭 基本的な思考プロセス情報のみ表示します")
+        st.json(thinking_data)
 
 if __name__ == "__main__":
     main() 

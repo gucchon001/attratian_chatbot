@@ -235,7 +235,8 @@ class TestHybridArchitecture:
             )
             
             # Then: 適切なAgent選択と実行
-            assert response == "統合された詳細回答"
+            assert "統合された詳細回答" in response
+            assert "信頼度" in response  # Agent機能により信頼度情報が追加される
             mock_agent_selector.select_agent_strategy.assert_called_once()
             mock_response_generator.generate_response.assert_called_once()
     

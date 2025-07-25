@@ -48,13 +48,18 @@ class ResponseGenerationAgent:
     
     def _init_llm_chain(self):
         """LLMChain初期化"""
-        # Gemini LLM設定（安定性重視）
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=self.settings.google_api_key,
-            temperature=0.3,  # 安定性重視
-            max_output_tokens=2048
-        )
+        # Gemini LLM設定（settings.ini準拠）
+        try:
+            self.llm = ChatGoogleGenerativeAI(
+                model=self.settings.gemini_model,  # settings.iniから読み込み
+                google_api_key=self.settings.google_api_key,
+                temperature=self.settings.gemini_temperature,  # settings.iniから読み込み
+                max_output_tokens=self.settings.gemini_max_tokens  # settings.iniから読み込み
+            )
+            logger.info(f"✅ Gemini LLM初期化成功: {self.settings.gemini_model}")
+        except Exception as e:
+            logger.error(f"❌ Gemini LLM初期化失敗: {e}")
+            raise
         
         # プロンプトテンプレート
         self.prompt = PromptTemplate(

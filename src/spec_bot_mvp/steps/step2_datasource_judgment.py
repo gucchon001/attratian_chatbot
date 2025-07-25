@@ -22,7 +22,7 @@ try:
 except ImportError:
     ChatGoogleGenerativeAI = None
 
-from src.spec_bot_mvp.config.settings import settings
+from src.spec_bot_mvp.config.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,22 +30,23 @@ class DataSourceJudge:
     """Step2: データソース判定エンジン（仕様書準拠）"""
     
     def __init__(self):
+        self.settings = Settings()  # Settingsインスタンス生成
         self.gemini_available = self._init_gemini()
         self._init_judgment_rules()
     
     def _init_gemini(self) -> bool:
         """Gemini AI初期化"""
-        if not ChatGoogleGenerativeAI or not settings.google_api_key:
+        if not ChatGoogleGenerativeAI or not self.settings.google_api_key:
             logger.warning("Gemini API利用不可 - 検索用キーワード最適化スキップ")
             return False
             
         try:
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
-                google_api_key=settings.google_api_key,
-                temperature=0.1
+                model=self.settings.gemini_model,  # settings.iniから読み込み
+                google_api_key=self.settings.google_api_key,
+                temperature=self.settings.gemini_temperature  # settings.iniから読み込み
             )
-            logger.info("Gemini AI初期化成功（Step2）")
+            logger.info(f"Gemini AI初期化成功（Step2）: {self.settings.gemini_model}")
             return True
         except Exception as e:
             logger.error(f"Gemini AI初期化失敗（Step2）: {e}")
