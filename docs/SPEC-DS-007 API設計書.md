@@ -43,11 +43,11 @@
 
 ## 🔌 **2. 内部API仕様**
 
-### **2.1 SpecBotAgent API**
+### **2.1 HybridSearchApplication API**
 
 #### **2.1.1 メイン処理API**
 ```python
-class SpecBotAgent:
+class HybridSearchApplication:
     def process_request(self, user_input: str, **kwargs) -> Dict[str, Any]:
         """
         ユーザー質問の処理エントリーポイント
@@ -100,7 +100,106 @@ class SpecBotAgent:
         """
 ```
 
-### **2.2 HybridSearchTool API**
+### **2.2 AgentHandoverManager API**
+
+#### **2.2.1 Agent連携処理API**
+```python
+class AgentHandoverManager:
+    def handover_to_agent(self, results: List[Dict], quality_score: float, query: str) -> str:
+        """
+        検索結果の品質に基づくAgent選択・実行
+        
+        Args:
+            results (List[Dict]): Step1-4検索結果
+            quality_score (float): 品質評価スコア (0.0-1.0)
+            query (str): 元のユーザー質問
+            
+        Returns:
+            str: Agent処理済み最終回答
+            
+        Raises:
+            AgentSelectionError: Agent選択エラー
+            AgentExecutionError: Agent実行エラー
+        """
+    
+    def get_handover_statistics(self) -> Dict[str, Any]:
+        """
+        Agent連携統計情報の取得
+        
+        Returns:
+            Dict: {
+                "total_handovers": int,
+                "response_agent_usage": int,
+                "fallback_agent_usage": int,
+                "average_quality_score": float
+            }
+        """
+```
+
+#### **2.2.2 ResponseGenerationAgent API**
+```python
+class ResponseGenerationAgent:
+    def generate_response(self, search_results: List[Dict], user_query: str) -> str:
+        """
+        検索結果の統合・要約による最終回答生成
+        
+        Args:
+            search_results (List[Dict]): 検索結果リスト
+            user_query (str): 元のユーザー質問
+            
+        Returns:
+            str: 統合・要約された最終回答
+            
+        Raises:
+            LLMError: LLM処理エラー
+            FormattingError: レスポンス形式エラー
+        """
+```
+
+#### **2.2.3 FallbackSearchAgent API**
+```python
+class FallbackSearchAgent:
+    def search_and_respond(self, query: str, filters: Dict) -> str:
+        """
+        低品質結果時の追加検索・補完処理
+        
+        Args:
+            query (str): 元のユーザー質問
+            filters (Dict): フィルター条件
+            
+        Returns:
+            str: 補完処理済み最終回答
+            
+        Raises:
+            EnhancedSearchError: 追加検索エラー
+            FallbackProcessError: フォールバック処理エラー
+        """
+```
+
+#### **2.2.4 AgentSelector API**
+```python
+class AgentSelector:
+    def select_agent_strategy(self, results: List[Dict], quality_score: float, 
+                            query: str, filters: Dict) -> Tuple[str, Dict]:
+        """
+        品質スコアに基づくAgent戦略選択
+        
+        Args:
+            results (List[Dict]): 検索結果
+            quality_score (float): 品質スコア
+            query (str): ユーザー質問
+            filters (Dict): フィルター条件
+            
+        Returns:
+            Tuple[str, Dict]: (選択戦略, 戦略パラメータ)
+                戦略: "response_generation" | "fallback_search"
+                
+        Raises:
+            StrategySelectionError: 戦略選択エラー
+        """
+```
+
+### **2.3 HybridSearchTool API**
 ```python
 class HybridSearchTool:
     def _run(self, query: str, **kwargs) -> str:
@@ -164,24 +263,37 @@ class KeywordExtractor:
         """
 ```
 
-#### **Step2: DataSourceJudgment API**
+#### **Step2: DataSourceJudge API**
 ```python
-class DataSourceJudgment:
-    def judge_optimal_datasource(self, keywords: List[str], question_type: str) -> Dict[str, Any]:
+class DataSourceJudge:
+    def judge_optimal_datasource(self, keywords: List[str], search_intent: str) -> Dict[str, Any]:
         """
         最適データソースの判定
         
         Args:
             keywords (List[str]): 抽出済みキーワード
-            question_type (str): 質問分類
+            search_intent (str): 検索意図分類
             
         Returns:
             Dict[str, Any]: {
                 "primary_source": str,      # "confluence"|"jira"|"both"
-                "confidence": float,        # 判定信頼度
+                "confidence": float,        # 判定信頼度 (0.0-1.0)
                 "reasoning": str,           # 判定理由
-                "suggested_filters": Dict   # 推奨フィルター
+                "suggested_filters": Dict,  # 推奨フィルター
+                "optimized_keywords": List[str]  # 最適化済みキーワード
             }
+        """
+    
+    def optimize_keywords_for_search(self, keywords: List[str], datasource: str) -> List[str]:
+        """
+        データソース用キーワード最適化
+        
+        Args:
+            keywords (List[str]): 元キーワード
+            datasource (str): 対象データソース
+            
+        Returns:
+            List[str]: 最適化済みキーワード
         """
 ```
 
@@ -301,17 +413,245 @@ class ProcessTracker:
         """
 ```
 
+### **2.4 Agent統合API群 (実装完了)**
+
+#### **2.4.1 AgentHandoverManager API**
+```python
+class AgentHandoverManager:
+    def __init__(self) -> None:
+        """Agent連携マネージャー初期化"""
+        
+    def execute_agent_handover(self,
+                              search_results: List[Dict],
+                              quality_score: float,
+                              user_query: str,
+                              filters: Dict[str, Any],
+                              pipeline_metadata: Dict[str, Any]) -> str:
+        """
+        Agent連携実行
+        
+        Args:
+            search_results: Step4までの検索結果
+            quality_score: 品質評価スコア
+            user_query: ユーザー質問
+            filters: フィルター条件
+            pipeline_metadata: パイプライン実行メタデータ
+            
+        Returns:
+            最終回答文字列
+            
+        Raises:
+            AgentInitializationError: Agent初期化失敗
+            AgentHandoverError: Agent連携処理失敗
+        """
+        
+    def get_handover_statistics(self) -> Dict[str, Any]:
+        """Agent連携統計情報取得"""
+        
+    def _should_use_fallback(self, quality_score: float) -> bool:
+        """フォールバック使用判定"""
+        
+    def _log_handover_event(self, agent_type: str, metadata: Dict) -> None:
+        """連携イベントログ記録"""
+```
+
+#### **2.4.2 ResponseGenerationAgent API**
+```python
+class ResponseGenerationAgent:
+    def __init__(self) -> None:
+        """回答生成Agent初期化"""
+        
+    def generate_response(self, 
+                         search_results: List[Dict], 
+                         user_query: str,
+                         context: Optional[Dict] = None) -> str:
+        """
+        統合回答生成
+        
+        Args:
+            search_results: 検索結果リスト
+            user_query: ユーザー質問
+            context: 追加コンテキスト（会話履歴等）
+            
+        Returns:
+            CLIENTTOMO最適化済み統合回答（ソース情報・信頼度・深掘り提案付き）
+            
+        Raises:
+            ResponseGenerationError: 回答生成失敗
+            LLMConnectionError: Gemini API接続失敗
+        """
+        
+    def _enhance_response_with_sources(self, response: str, search_results: List[Dict]) -> str:
+        """回答にソース情報を付加"""
+        
+    def _generate_sources_section(self, search_results: List[Dict]) -> str:
+        """ソース情報セクション生成"""
+        
+    def _generate_followup_suggestions(self, user_query: str, search_results: List[Dict]) -> List[str]:
+        """深掘り検索提案生成"""
+```
+
+#### **2.4.3 FallbackSearchAgent API**
+```python
+class FallbackSearchAgent:
+    def __init__(self) -> None:
+        """フォールバック検索Agent初期化"""
+        
+    def search_exploratory(self, 
+                          query: str, 
+                          context: Dict[str, Any]) -> str:
+        """
+        探索的検索実行
+        
+        Args:
+            query: 検索クエリ
+            context: 検索コンテキスト（フィルター、履歴等）
+            
+        Returns:
+            探索的検索結果
+            
+        Raises:
+            FallbackSearchError: 探索的検索失敗
+            AtlassianAPIError: Atlassian API接続失敗
+        """
+        
+    def _init_react_agent(self) -> None:
+        """ReAct型Agent初期化"""
+        
+    def _handle_search_error(self, error: Exception) -> str:
+        """検索エラーハンドリング"""
+```
+
+#### **2.4.4 AgentSelector API**
+```python
+class AgentSelector:
+    def __init__(self) -> None:
+        """Agent選択ロジック初期化"""
+        
+    def select_agent(self, 
+                    quality_score: float, 
+                    context: Dict[str, Any]) -> str:
+        """
+        最適Agent選択
+        
+        Args:
+            quality_score: 検索品質スコア (0.0-1.0)
+            context: 選択コンテキスト
+            
+        Returns:
+            選択されたAgent種別 ("response_generation" | "fallback_search")
+            
+        Raises:
+            AgentSelectionError: Agent選択失敗
+        """
+        
+    def _evaluate_pipeline_quality(self, search_results: List[Dict]) -> float:
+        """パイプライン品質評価"""
+        
+    def update_usage_stats(self, agent_type: str) -> None:
+        """Agent使用統計更新"""
+        
+    def get_selection_metrics(self) -> Dict[str, Any]:
+        """選択メトリクス取得"""
+```
+
+### **2.5 Settings統合管理API (強化版)**
+
+#### **2.5.1 Settings API**
+```python
+class Settings:
+    def __init__(self) -> None:
+        """設定管理初期化（settings.ini + secrets.env統合）"""
+        
+    # Gemini設定
+    gemini_model: str  # settings.iniから読み込み (gemini-1.5-flash等)
+    gemini_temperature: float  # settings.iniから読み込み
+    gemini_max_tokens: int  # settings.iniから読み込み
+    
+    # Atlassian設定
+    domain: str  # settings.iniから読み込み
+    email: str  # settings.iniから読み込み
+    confluence_space: str  # settings.iniから読み込み
+    target_project: str  # settings.iniから読み込み
+    
+    # 自動構築URL
+    jira_url: str  # ドメインから自動構築
+    confluence_url: str  # ドメインから自動構築
+    jira_username: str  # emailから自動設定
+    confluence_username: str  # emailから自動設定
+    
+    # API認証情報（secrets.envから）
+    google_api_key: str
+    jira_api_token: str
+    confluence_api_token: str
+    
+    def _load_settings_ini(self) -> None:
+        """settings.ini読み込み（configparser使用）"""
+        
+    def _construct_atlassian_urls(self) -> None:
+        """AtlassianURL自動構築"""
+        
+    def _load_environment(self) -> None:
+        """環境変数・secrets.env読み込み"""
+```
+
+### **2.5 AtlassianAPIClient API**
+
+#### **2.5.1 統合APIクライアント**
+```python
+class AtlassianAPIClient:
+    def __init__(self, jira_url: str, jira_username: str, jira_token: str,
+                 confluence_url: str, confluence_username: str, confluence_token: str):
+        """Jira/Confluence統合APIクライアント初期化"""
+    
+    def test_connection(self) -> Dict[str, bool]:
+        """
+        API接続テスト
+        
+        Returns:
+            Dict[str, bool]: {
+                "jira": bool,      # Jira接続成功
+                "confluence": bool # Confluence接続成功
+            }
+        """
+    
+    def search_jira(self, keywords: List[str], max_results: int = 50) -> List[Dict[str, Any]]:
+        """
+        Jira検索実行
+        
+        Args:
+            keywords (List[str]): 検索キーワード
+            max_results (int): 最大結果数
+            
+        Returns:
+            List[Dict]: Jira検索結果
+        """
+    
+    def search_confluence(self, keywords: List[str], max_results: int = 50) -> List[Dict[str, Any]]:
+        """
+        Confluence検索実行
+        
+        Args:
+            keywords (List[str]): 検索キーワード
+            max_results (int): 最大結果数
+            
+        Returns:
+            List[Dict]: Confluence検索結果
+        """
+```
+
 ---
 
 ## 🌐 **3. 外部API仕様**
 
 ### **3.1 Google Gemini API**
 
-#### **3.1.1 API基本情報**
-- **エンドポイント**: `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent`
-- **認証**: API Key認証
+#### **3.1.1 API基本情報 (実装済み)**
+- **エンドポイント**: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent`
+- **認証**: API Key認証（環境変数GOOGLE_API_KEY/GEMINI_API_KEY）
 - **リクエスト制限**: 60 requests/minute
-- **最大トークン**: 1,048,576 tokens
+- **実装モデル**: gemini-1.5-flash（実装確認済み）
+- **温度設定**: 0.1（安定性重視）
 
 #### **3.1.2 リクエスト/レスポンス仕様**
 ```python
@@ -368,11 +708,13 @@ class GeminiAPIClient:
 
 ### **3.2 Confluence REST API**
 
-#### **3.2.1 API基本情報**
-- **エンドポイント**: `https://{domain}.atlassian.net/wiki/rest/api/`
+#### **3.2.1 API基本情報 (実装済み)**
+- **エンドポイント**: `{confluence_url}/rest/api/` (設定可能)
 - **認証**: Basic認証 (email + API token)
-- **バージョン**: v1
+- **バージョン**: v1 (Cloud API)
 - **レート制限**: 300 requests/minute
+- **実装状況**: AtlassianAPIClient統合済み
+- **自動URL構築**: /wiki パス自動追加対応
 
 #### **3.2.2 CQL検索API**
 ```python
@@ -433,39 +775,38 @@ class ConfluenceAPIClient:
 
 ### **3.3 Jira REST API**
 
-#### **3.3.1 API基本情報**
-- **エンドポイント**: `https://{domain}.atlassian.net/rest/api/3/`
+#### **3.3.1 API基本情報 (実装済み)**
+- **エンドポイント**: `{jira_url}/rest/api/3/` (設定可能)
 - **認証**: Basic認証 (email + API token)
-- **バージョン**: v3
+- **バージョン**: v3 (最新API)
 - **レート制限**: 300 requests/minute
+- **実装状況**: AtlassianAPIClient統合済み
 
-#### **3.3.2 JQL検索API**
+#### **3.3.2 JQL検索API (実装済み)**
 ```python
 # JQL検索エンドポイント
 POST /rest/api/3/search
 
-# リクエスト例
+# リクエストペイロード例 (実装済み)
 {
-    "jql": "project = CTJ AND status IN (\"To Do\", \"In Progress\") AND text ~ \"ログイン\"",
+    "jql": "text ~ \"ログイン\" AND text ~ \"機能\" ORDER BY updated DESC",
     "maxResults": 50,
-    "startAt": 0,
-    "fields": ["summary", "status", "assignee", "created", "updated", "description"]
+    "fields": ["key", "summary", "description", "status", "priority", "issuetype", "created", "updated"],
+    "expand": ["renderedFields"]
 }
 
-# レスポンス例
+# レスポンス例 (実装確認済み)
 {
     "issues": [
         {
-            "id": "10001",
+            "id": "10001", 
             "key": "CTJ-123",
             "fields": {
                 "summary": "ログイン機能の改修",
-                "status": {
-                    "name": "In Progress"
-                },
-                "assignee": {
-                    "displayName": "田中太郎"
-                },
+                "description": "詳細説明...",
+                "status": {"name": "In Progress"},
+                "priority": {"name": "High"},
+                "issuetype": {"name": "Story"},
                 "created": "2024-12-01T09:00:00.000+0900",
                 "updated": "2024-12-15T14:30:00.000+0900"
             }
@@ -487,17 +828,21 @@ flowchart TD
     User[👤 ユーザー] --> StreamlitUI[🎨 Streamlit UI]
     StreamlitUI --> Agent[🧠 SpecBotAgent]
     
-    Agent --> Tool[🔍 HybridSearchTool]
-    Tool --> Step1[📝 Step1: KeywordExtractor]
-    Tool --> Step2[🎯 Step2: DataSourceJudgment]
-    Tool --> Step3[🔍 Step3: CQLSearch]
-    Tool --> Step4[⚖️ Step4: QualityEvaluator]
+    Agent --> App[📱 HybridSearchApplication]
+    App --> Tool[🔍 HybridSearchTool]
+    Tool --> Step2[📝 Step2: KeywordExtractor]
+    Tool --> Step3[🎯 Step3: DataSourceJudge]
+    Tool --> Step4[🔍 Step4: CQLSearchEngine]
+    Tool --> Step5[⚖️ Step5: QualityEvaluator]
+    App --> HandoverMgr[🤝 AgentHandoverManager]
     
-    Step1 --> GeminiAPI[🤖 Gemini API]
-    Step3 --> ConfluenceAPI[📚 Confluence API]
-    Step3 --> JiraAPI[🎫 Jira API]
+    Step2 --> GeminiAPI[🤖 Gemini API]
+    Step3 --> GeminiAPI
+    Step4 --> ConfluenceAPI[📚 Confluence API]
+    Step4 --> JiraAPI[🎫 Jira API]
+    Step4 --> AtlassianAPI[🔗 AtlassianAPIClient]
     
-    Step3 --> Cache[💾 CacheManager]
+    Step4 --> Cache[💾 CacheManager]
     Cache --> SQLite[(🗄️ SQLite DB)]
     
     Step4 --> Agent

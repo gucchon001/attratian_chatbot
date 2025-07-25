@@ -14,89 +14,114 @@
 ## 📊 **1. データベース概要**
 
 ### **1.1 データベース仕様**
-- **DBMS**: SQLite 3.x
-- **ファイル場所**: `{project_root}/cache/filter_cache.db`
+- **DBMS**: SQLite 3.x + JSON File Storage (ハイブリッド)
+- **SQLiteファイル**: `{project_root}/cache/filter_cache.db`
+- **JSONファイル**: 
+  - `{project_root}/data/confluence_hierarchy.json` (階層データ)
+  - `{project_root}/data/cache_metadata.json` (メタデータ)
 - **文字コード**: UTF-8
-- **主要目的**: パフォーマンス向上・ユーザー体験改善
+- **主要目的**: 高速キャッシュ・階層データ永続化・ユーザー体験改善
 
 ### **1.2 設計方針**
-1. **軽量性**: SQLiteによる軽量なファイルベースDB
-2. **高速性**: インデックス最適化による高速クエリ
-3. **拡張性**: 将来的な機能追加に対応可能な設計
-4. **保守性**: シンプルなテーブル構造・明確な命名規則
+1. **軽量性**: SQLite + JSON ハイブリッドによる軽量設計
+2. **高速性**: 
+   - SQLite: 高頻度アクセスデータ（キャッシュ・フィルター）
+   - JSON: 大容量階層データ（Confluence構造）
+3. **実用性**: 実装コストと性能のバランス重視
+4. **保守性**: シンプルな構造・明確なデータ分離
 
 ---
 
 ## 🏗️ **2. 論理設計**
 
-### **2.1 エンティティ関係図 (ER図)**
+### **2.1 データ構造図 (ハイブリッド設計)**
 ```mermaid
 erDiagram
-    CACHE_ENTRIES {
-        TEXT key PK "キャッシュキー"
+    %% SQLite Tables
+    FILTER_CACHE {
+        INTEGER id PK "自動ID"
+        TEXT cache_key UNIQUE "キャッシュキー"
         TEXT data "JSONデータ"
-        DATETIME created_at "作成日時"
-        DATETIME expires_at "有効期限"
-        TEXT category "カテゴリ"
+        TIMESTAMP created_at "作成日時"
+        TIMESTAMP expires_at "有効期限"
     }
 
+    %% JSON File Structures
+    CONFLUENCE_HIERARCHY_JSON {
+        TEXT space_name "スペース名"
+        TEXT space_key "スペースキー"
+        TIMESTAMP generated_at "生成日時"
+        INTEGER total_pages "総ページ数"
+        INTEGER deleted_pages_count "削除ページ数"
+        TEXT version "バージョン"
+        JSON folders "階層フォルダ構造"
+    }
+
+    CACHE_METADATA_JSON {
+        TIMESTAMP last_update "最終更新日時"
+        TEXT version "バージョン"
+        INTEGER total_pages "総ページ数"
+        INTEGER deleted_pages_count "削除ページ数"
+    }
+
+    %% Future Extension Tables (Phase 2以降)
     CONVERSATION_HISTORY {
         INTEGER id PK "履歴ID"
         TEXT session_id "セッションID"
         TEXT user_message "ユーザーメッセージ"
         TEXT bot_response "ボット回答"
-        TEXT thinking_process "思考プロセス詳細"
-        DATETIME created_at "作成日時"
-        TEXT metadata "メタデータ(JSON)"
-    }
-
-    FILTER_SETTINGS {
-        INTEGER id PK "設定ID"
-        TEXT user_session "ユーザーセッション"
-        TEXT filter_type "フィルター種別"
-        TEXT filter_value "設定値(JSON)"
-        DATETIME created_at "作成日時"
-        DATETIME updated_at "更新日時"
+        TIMESTAMP created_at "作成日時"
     }
 
     SEARCH_ANALYTICS {
         INTEGER id PK "分析ID"
         TEXT query_text "検索クエリ"
         TEXT extracted_keywords "抽出キーワード(JSON)"
-        TEXT search_strategy "検索戦略"
-        INTEGER result_count "結果件数"
-        REAL relevance_score "関連度スコア"
-        REAL response_time "応答時間(秒)"
-        DATETIME executed_at "実行日時"
+        REAL quality_score "品質スコア"
+        TIMESTAMP executed_at "実行日時"
     }
 
-    CONFLUENCE_HIERARCHY {
-        INTEGER id PK "階層ID"
-        TEXT page_id "ページID"
-        TEXT page_title "ページタイトル"
-        TEXT parent_id "親ページID"
-        INTEGER level "階層レベル"
-        TEXT path "フルパス"
-        BOOLEAN is_deleted "削除フラグ"
-        DATETIME cached_at "キャッシュ日時"
-    }
-
-    CACHE_ENTRIES ||--o{ FILTER_SETTINGS : "filters"
-    CONVERSATION_HISTORY ||--o{ SEARCH_ANALYTICS : "searches"
-    CONFLUENCE_HIERARCHY ||--o{ CACHE_ENTRIES : "hierarchy_cache"
+    FILTER_CACHE ||--o{ CONFLUENCE_HIERARCHY_JSON : "hierarchy_reference"
+    CACHE_METADATA_JSON ||--o{ CONFLUENCE_HIERARCHY_JSON : "metadata_for"
 ```
 
-### **2.2 エンティティ定義**
+### **2.2 データ構造定義**
 
-#### **CACHE_ENTRIES (キャッシュエントリ)**
-- **目的**: API結果のキャッシュ・パフォーマンス向上
-- **データ量**: 中量（数百～数千レコード）
-- **更新頻度**: 高頻度（1時間ごと）
+#### **SQLite Tables (実装済み)**
 
-#### **CONVERSATION_HISTORY (会話履歴)**
+##### **FILTER_CACHE (フィルターキャッシュ)**
+- **目的**: フィルター選択肢のキャッシュ・API削減
+- **データ量**: 小量（数十レコード）
+- **更新頻度**: 低頻度（24時間キャッシュ）
+- **実装状況**: ✅ 完全実装済み
+
+#### **JSON File Storage (実装済み)**
+
+##### **CONFLUENCE_HIERARCHY.JSON (Confluence階層)**
+- **目的**: Confluenceページ階層の永続化・高速フィルタリング
+- **データ量**: 大量（1129ページ、260KB）
+- **更新頻度**: 低頻度（手動更新）
+- **実装状況**: ✅ 完全実装済み
+
+##### **CACHE_METADATA.JSON (キャッシュメタデータ)**
+- **目的**: キャッシュ管理・バージョン管理
+- **データ量**: 極小（1レコード）
+- **更新頻度**: 階層データ更新時
+- **実装状況**: ✅ 完全実装済み
+
+#### **Future Extension Tables (Phase 2以降)**
+
+##### **CONVERSATION_HISTORY (会話履歴)**
 - **目的**: ユーザー会話の永続化・文脈保持
 - **データ量**: 中量（数十～数百レコード/ユーザー）
 - **更新頻度**: 低頻度（質問ごと）
+- **実装状況**: 📋 Phase 2実装予定
+
+##### **SEARCH_ANALYTICS (検索分析)**
+- **目的**: 検索パフォーマンス分析・品質改善
+- **データ量**: 中量（数百～数千レコード）
+- **更新頻度**: 中頻度（検索ごと）
+- **実装状況**: 📋 Phase 2実装予定
 
 #### **FILTER_SETTINGS (フィルター設定)**
 - **目的**: ユーザー個別フィルター設定の保存
@@ -117,26 +142,60 @@ erDiagram
 
 ## 🔧 **3. 物理設計**
 
-### **3.1 CREATE TABLE文**
+### **3.1 SQLite テーブル定義 (実装済み)**
 
-#### **3.1.1 CACHE_ENTRIES テーブル**
+#### **3.1.1 FILTER_CACHE テーブル (実装済み)**
 ```sql
-CREATE TABLE IF NOT EXISTS cache_entries (
-    key TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS filter_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cache_key TEXT UNIQUE NOT NULL,
     data TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL,
-    category TEXT DEFAULT 'general',
-    CHECK (length(key) <= 255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    CHECK (length(cache_key) <= 255),
     CHECK (expires_at > created_at)
 );
 
--- インデックス
-CREATE INDEX idx_cache_expires ON cache_entries(expires_at);
-CREATE INDEX idx_cache_category ON cache_entries(category);
+-- インデックス (実装済み)
+CREATE INDEX IF NOT EXISTS idx_filter_cache_key ON filter_cache(cache_key);
+CREATE INDEX IF NOT EXISTS idx_filter_cache_expires ON filter_cache(expires_at);
 ```
 
-#### **3.1.2 CONVERSATION_HISTORY テーブル**
+### **3.2 JSON File 構造定義 (実装済み)**
+
+#### **3.2.1 confluence_hierarchy.json (実装済み)**
+```json
+{
+  "space_name": "client-tomonokai-juku",
+  "space_key": "CLIENTTOMO", 
+  "generated_at": "2025-07-17T17:08:20.783550",
+  "total_pages": 1129,
+  "deleted_pages_count": 0,
+  "version": "1.0",
+  "folders": [
+    {
+      "name": "フォルダ名",
+      "type": "folder|page",
+      "updated": "YYYY-MM-DD HH:MM",
+      "children": [...]
+    }
+  ]
+}
+```
+
+#### **3.2.2 cache_metadata.json (実装済み)**
+```json
+{
+  "last_update": "2025-07-17T17:08:20.800193",
+  "version": "1.0",
+  "total_pages": 1129,
+  "deleted_pages_count": 0
+}
+```
+
+### **3.3 Future Extension Tables (Phase 2以降)**
+
+#### **3.3.1 CONVERSATION_HISTORY テーブル**
 ```sql
 CREATE TABLE IF NOT EXISTS conversation_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -248,47 +307,52 @@ INSERT OR IGNORE INTO filter_settings (user_session, filter_type, filter_value) 
 
 ## 📈 **4. パフォーマンス設計**
 
-### **4.1 インデックス戦略**
-```sql
--- 複合インデックス（頻繁なクエリパターン用）
-CREATE INDEX idx_cache_category_expires ON cache_entries(category, expires_at);
-CREATE INDEX idx_conv_session_created ON conversation_history(session_id, created_at DESC);
-CREATE INDEX idx_hierarchy_parent_level ON confluence_hierarchy(parent_id, level);
+### **4.1 現在の実装によるパフォーマンス戦略**
 
--- 部分インデックス（条件付きクエリ用）
-CREATE INDEX idx_hierarchy_active ON confluence_hierarchy(page_id) WHERE is_deleted = FALSE;
-CREATE INDEX idx_cache_valid ON cache_entries(key) WHERE expires_at > CURRENT_TIMESTAMP;
+#### **SQLite パフォーマンス (実装済み)**
+```sql
+-- FILTER_CACHE インデックス (実装済み)
+CREATE INDEX IF NOT EXISTS idx_filter_cache_key ON filter_cache(cache_key);
+CREATE INDEX IF NOT EXISTS idx_filter_cache_expires ON filter_cache(expires_at);
+
+-- キャッシュクリーンアップ (CacheManager実装済み)
+DELETE FROM filter_cache WHERE expires_at <= datetime('now');
 ```
 
-### **4.2 クエリ最適化例**
-```sql
--- 1. 有効なキャッシュ取得（最頻繁クエリ）
-SELECT data FROM cache_entries 
-WHERE key = ? AND expires_at > CURRENT_TIMESTAMP;
+#### **JSON File パフォーマンス (実装済み)**
+- **メモリロード**: 起動時に260KBのconfluence_hierarchy.jsonを一括ロード
+- **階層フィルタリング**: Pythonでの高速フィルタリング処理
+- **キャッシュ戦略**: 24時間有効期限による適切なキャッシュ管理
 
--- 2. セッション別会話履歴（ページネーション対応）
-SELECT user_message, bot_response, created_at 
-FROM conversation_history 
-WHERE session_id = ? 
-ORDER BY created_at DESC 
-LIMIT ? OFFSET ?;
+### **4.2 実際の使用例 (実装済み)**
 
--- 3. 階層フィルタリング（アクティブページのみ）
-SELECT page_id, page_title, level, path 
-FROM confluence_hierarchy 
-WHERE parent_id = ? AND is_deleted = FALSE 
-ORDER BY level, page_title;
+#### **CacheManager での SQLite 操作**
+```python
+# キャッシュ取得 (実装済み)
+def get(self, cache_key: str) -> Optional[Any]:
+    with self._get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT data, expires_at FROM filter_cache 
+            WHERE cache_key = ? AND expires_at > ?
+        """, (cache_key, datetime.now().isoformat()))
 
--- 4. 検索パフォーマンス分析
-SELECT 
-    search_strategy,
-    AVG(relevance_score) as avg_relevance,
-    AVG(response_time) as avg_response_time,
-    COUNT(*) as query_count
-FROM search_analytics 
-WHERE executed_at >= datetime('now', '-7 days')
-GROUP BY search_strategy
-ORDER BY avg_relevance DESC;
+# キャッシュ設定 (実装済み)
+def set(self, cache_key: str, data: Any, expiry_hours: int = 24):
+    expires_at = datetime.now() + timedelta(hours=expiry_hours)
+    with self._get_connection() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO filter_cache 
+            (cache_key, data, expires_at) VALUES (?, ?, ?)
+        """, (cache_key, json.dumps(data), expires_at.isoformat()))
+```
+
+#### **Confluence階層データの使用例**
+```python
+# JSON ファイルからの階層読み込み (実装済み)
+with open("data/confluence_hierarchy.json", "r") as f:
+    hierarchy_data = json.load(f)
+    total_pages = hierarchy_data["total_pages"]  # 1129
+    folders = hierarchy_data["folders"]
 ```
 
 ---

@@ -41,143 +41,106 @@
 ### **2.1 アプリケーション層クラス図**
 ```mermaid
 classDiagram
-    class SpecBotAgent {
-        -llm: ChatGoogleGenerativeAI
-        -tools: List[Tool]
-        -agent_executor: AgentExecutor
-        -memory: ConversationBufferMemory
-        -process_tracker: ProcessTracker
-        +__init__()
-        +_initialize_llm(): void
-        +_initialize_memory(): void
-        +_initialize_tools(): void
-        +_initialize_agent(): void
-        +process_request(user_input: str, **kwargs): Dict[str, Any]
-        +get_conversation_history(session_id: str): List[Dict]
-        +clear_conversation_history(session_id: str): bool
-        -_create_agent_prompt(): PromptTemplate
-        -_handle_agent_error(error: Exception): str
+    class HybridSearchApplication {
+        +Settings settings
+        +HybridSearchTool search_tool
+        +AgentHandoverManager agent_manager
+        +execute_search(query: str) str
+        +apply_filters(filters: Dict) None
+        +get_search_results() List[Dict]
+        +handle_error(error: Exception) str
+    }
+    
+    class Settings {
+        +str gemini_model
+        +float gemini_temperature
+        +int gemini_max_tokens
+        +str domain
+        +str email
+        +str confluence_space
+        +str target_project
+        +str jira_url
+        +str confluence_url
+        +str jira_username
+        +str confluence_username
+        +str jira_api_token
+        +str confluence_api_token
+        +_load_settings_ini() None
+        +_construct_atlassian_urls() None
+        +_load_environment() None
+    }
+    
+    class HybridSearchTool {
+        +KeywordExtractor extractor
+        +DataSourceJudge judge
+        +CQLSearchEngine search_engine
+        +QualityEvaluator evaluator
+        +search(query: str) str
+        +run(query: str) str
+        +_init_components() None
     }
 
-    class ProcessTracker {
-        -stages: List[ProcessStage]
-        -current_stage_index: int
-        -start_time: datetime
-        -session_id: str
-        +__init__(session_id: str)
-        +start_stage(stage_name: str, details: Dict): void
-        +complete_stage(stage_name: str, result: Dict): void
-        +fail_stage(stage_name: str, error: str): void
-        +get_progress_summary(): Dict[str, Any]
-        +get_current_stage(): ProcessStage
-        +reset(): void
-        -_calculate_progress(): float
+    class AgentHandoverManager {
+        +ResponseGenerationAgent response_generator
+        +FallbackSearchAgent fallback_searcher
+        +AgentSelector agent_selector
+        +List[Dict] handover_history
+        +execute_agent_handover(search_results, quality_score, user_query, filters, metadata) str
+        +_should_use_fallback(quality_score: float) bool
+        +_log_handover_event(agent_type: str, metadata: Dict) None
+        +get_handover_statistics() Dict
     }
 
-    class ProcessStage {
-        +name: str
-        +status: ProcessStatus
-        +start_time: datetime
-        +end_time: Optional[datetime]
-        +details: Dict[str, Any]
-        +result: Optional[Dict]
-        +error: Optional[str]
-        +__init__(name: str)
-        +start(): void
-        +complete(result: Dict): void
-        +fail(error: str): void
-        +get_duration(): float
-    }
-
-    class ProcessStatus {
-        <<enumeration>>
-        PENDING
-        IN_PROGRESS
-        COMPLETED
-        FAILED
-    }
-
-    SpecBotAgent --> ProcessTracker : tracks
-    ProcessTracker --> ProcessStage : manages
-    ProcessStage --> ProcessStatus : has_status
+    HybridSearchApplication --> Settings
+    HybridSearchApplication --> HybridSearchTool
+    HybridSearchApplication --> AgentHandoverManager
 ```
 
 ### **2.2 ドメイン層 - ツール・検索クラス図**
 ```mermaid
 classDiagram
-    class HybridSearchTool {
-        -step1_extractor: KeywordExtractor
-        -step2_judgment: DataSourceJudgment
-        -step3_search: CQLSearch
-        -step4_quality: QualityEvaluator
-        -process_tracker: ProcessTracker
-        +__init__()
-        +_run(query: str, **kwargs): str
-        +_execute_hybrid_search(query: str): Dict[str, Any]
-        -_format_final_response(results: Dict): str
-        -_handle_search_error(error: Exception): str
-    }
-
     class KeywordExtractor {
-        -llm: ChatGoogleGenerativeAI
-        -gemini_available: bool
-        -specialist_dictionary: Dict[str, List[str]]
-        +__init__()
-        +extract_keywords(query: str): Dict[str, Any]
-        +_init_gemini(): bool
-        +_extract_with_gemini(query: str): Dict[str, Any]
-        +_extract_with_rules(query: str): Dict[str, Any]
-        +_classify_question_type(query: str): str
-        +_expand_with_dictionary(keywords: List[str]): List[str]
-        -_remove_generic_terms(keywords: List[str]): List[str]
-        -_calculate_confidence(method: str, keywords: List[str]): float
+        +Settings settings
+        +ChatGoogleGenerativeAI llm
+        +Dict clienttomo_dictionary
+        +extract_keywords(query: str) Dict[str, Any]
+        +_extract_with_gemini(query: str) Dict
+        +_extract_with_rules(query: str) Dict
+        +_init_clienttomo_dictionary() None
+        +_validate_keywords(keywords: List[str]) List[str]
     }
-
-    class DataSourceJudgment {
-        -llm: ChatGoogleGenerativeAI
-        -confidence_threshold: float
-        +__init__()
-        +judge_optimal_datasource(keywords: List[str], question_type: str): Dict[str, Any]
-        +_analyze_keyword_context(keywords: List[str]): Dict[str, Any]
-        +_determine_primary_source(analysis: Dict): str
-        +_suggest_filters(source: str, keywords: List[str]): Dict[str, Any]
-        -_calculate_confidence_score(analysis: Dict): float
+    
+    class DataSourceJudge {
+        +Settings settings  
+        +ChatGoogleGenerativeAI llm
+        +judge_datasource(keyword_result: Dict) Dict[str, Any]
+        +_analyze_intent(query: str, keywords: List[str]) Dict
+        +_determine_optimal_source(intent: Dict, keywords: List[str]) str
+        +_calculate_confidence(analysis: Dict) float
     }
-
-    class CQLSearch {
-        -api_client: Optional[Any]
-        -mock_mode: bool
-        -strategy_weights: Dict[str, float]
-        +__init__()
-        +search_confluence(keywords: List[str], filters: Dict): Dict[str, Any]
-        +_execute_strategy1(keywords: List[str]): List[Dict]
-        +_execute_strategy2(keywords: List[str]): List[Dict]
-        +_execute_strategy3(keywords: List[str]): List[Dict]
-        +_merge_results(strategy_results: Dict): List[Dict]
-        +_deduplicate_results(results: List[Dict]): List[Dict]
-        -_build_cql_query(strategy: str, keywords: List[str]): str
-        -_execute_api_call(cql_query: str): Dict[str, Any]
+    
+    class CQLSearchEngine {
+        +AtlassianAPIClient api_client
+        +execute_search(datasource_result: Dict, keyword_result: Dict) List[Dict]
+        +_execute_confluence_search(keywords: List[str], filters: Dict) List[Dict]
+        +_execute_jira_search(keywords: List[str], filters: Dict) List[Dict]
+        +_build_cql_query(keywords: List[str], filters: Dict) str
+        +_build_jql_query(keywords: List[str], filters: Dict) str
+        +_apply_three_stage_strategy(base_query: str) List[str]
     }
-
+    
     class QualityEvaluator {
-        -relevance_weight: float
-        -content_weight: float
-        -freshness_weight: float
-        -coverage_weight: float
-        +__init__()
-        +evaluate_search_quality(results: List[Dict], keywords: List[str]): Dict[str, Any]
-        +_calculate_relevance_score(result: Dict, keywords: List[str]): float
-        +_assess_content_quality(result: Dict): Dict[str, Any]
-        +_check_freshness(result: Dict): Dict[str, Any]
-        +_analyze_coverage(results: List[Dict], keywords: List[str]): Dict[str, Any]
-        -_calculate_keyword_density(text: str, keywords: List[str]): float
-        -_assess_document_completeness(result: Dict): float
+        +evaluate_and_rank(search_results: List[Dict], keywords: Dict, datasource: Dict) Dict[str, Any]
+        +_calculate_relevance_score(result: Dict, keywords: List[str]) float
+        +_rank_results(results: List[Dict]) List[Dict]
+        +_generate_quality_metadata(results: List[Dict]) Dict
+        +_determine_agent_recommendation(quality_score: float) str
     }
 
-    HybridSearchTool --> KeywordExtractor : uses
-    HybridSearchTool --> DataSourceJudgment : uses
-    HybridSearchTool --> CQLSearch : uses
-    HybridSearchTool --> QualityEvaluator : uses
+    HybridSearchTool --> KeywordExtractor
+    HybridSearchTool --> DataSourceJudge
+    HybridSearchTool --> CQLSearchEngine
+    HybridSearchTool --> QualityEvaluator
 ```
 
 ### **2.3 インフラストラクチャ層クラス図**

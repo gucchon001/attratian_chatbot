@@ -130,11 +130,17 @@ graph TB
     subgraph "🧠 Application Components"
         direction TB
         
-        subgraph "🤖 Agent Core"
-            SpecBotAgent[SpecBotAgent]
-            AgentExecutor[LangChain AgentExecutor]
-            MemoryManager[ConversationBufferMemory]
-            PromptTemplates[PromptTemplate Manager]
+        subgraph "🤖 Application Core"
+            HybridSearchApp[HybridSearchApplication]
+            AgentHandoverMgr[AgentHandoverManager]
+            AgentSelector[AgentSelector]
+        end
+        
+        subgraph "🤖 Agent Components"
+            ResponseAgent[ResponseGenerationAgent]
+            FallbackAgent[FallbackSearchAgent]
+            LLMChainResponse[Response LLMChain]
+            ReActAgent[ReAct AgentExecutor]
         end
         
         subgraph "⚙️ Process Management"
@@ -151,22 +157,29 @@ graph TB
         end
     end
 
-    %% Internal connections
-    SpecBotAgent --> AgentExecutor
-    SpecBotAgent --> MemoryManager
-    SpecBotAgent --> PromptTemplates
-    SpecBotAgent --> ProcessTracker
+    %% Internal connections - Application Core
+    HybridSearchApp --> AgentHandoverMgr
+    HybridSearchApp --> ProcessTracker
+    AgentHandoverMgr --> AgentSelector
+    AgentHandoverMgr --> ResponseAgent
+    AgentHandoverMgr --> FallbackAgent
     
+    %% Agent Component connections
+    ResponseAgent --> LLMChainResponse
+    FallbackAgent --> ReActAgent
+    
+    %% Process Management connections
     ProcessTracker --> StageManager
     ProcessTracker --> ProgressMonitor
     ProcessTracker --> ObserverPattern
     
-    SpecBotAgent --> ToolOrchestrator
-    AgentExecutor --> CallbackManager
+    %% Integration Layer connections
+    HybridSearchApp --> ToolOrchestrator
+    ReActAgent --> CallbackManager
     ToolOrchestrator --> ErrorHandler
 
     %% External dependencies
-    SpecBotAgent -.->|uses| HybridSearchTool[🔍 Hybrid Search Tool]
+    HybridSearchApp -.->|uses| HybridSearchTool[🔍 Hybrid Search Tool]
     ProcessTracker -.->|notifies| UIObserver[👁️ UI Observer]
 ```
 
@@ -191,7 +204,7 @@ graph TB
         end
         
         subgraph "🎯 Data Source Management"
-            DataSourceJudgment[DataSourceJudgment]
+            DataSourceJudge[DataSourceJudge]
             SourceAnalyzer[Source Analyzer]
             FilterSuggester[Filter Suggester]
         end
@@ -208,37 +221,56 @@ graph TB
             Deduplicator[Deduplicator]
             Formatter[Response Formatter]
         end
+        
+        subgraph "🤝 Agent Orchestration"
+            AgentHandoverManager[AgentHandoverManager]
+            AgentSelector[AgentSelector]
+            QualityThresholdManager[Quality Threshold Manager]
+        end
+        
+        subgraph "🤖 Response Generation"
+            ResponseGenerationAgent[ResponseGenerationAgent]
+            FallbackSearchAgent[FallbackSearchAgent]
+            LLMChainManager[LLM Chain Manager]
+        end
     end
 
     %% Internal connections within Search Engine
     HybridSearchTool --> CQLSearchEngine
-    HybridSearchTool --> JQLSearchEngine
+    HybridSearchTool --> SearchStrategies
     CQLSearchEngine --> SearchStrategies
     
-    %% Keyword Processing connections
+    %% Keyword Processing connections  
     KeywordExtractor --> GeminiIntegration
     KeywordExtractor --> RuleBasedExtractor
-    KeywordExtractor --> DictionaryExpander
     
-    %% Data Source connections
-    DataSourceJudgment --> SourceAnalyzer
-    DataSourceJudgment --> FilterSuggester
+    %% Data Source connections (内部メソッドとして実装)
+    DataSourceJudge --> GeminiIntegration
     
-    %% Quality Assurance connections
-    QualityEvaluator --> RelevanceCalculator
-    QualityEvaluator --> FreshnessChecker
-    QualityEvaluator --> CoverageAnalyzer
+    %% Quality Assurance connections (内部メソッドとして実装)
+    QualityEvaluator --> ResultMerger
     
     %% Result Processing connections
     CQLSearchEngine --> ResultMerger
-    ResultMerger --> Deduplicator
-    Deduplicator --> Formatter
+    ResultMerger --> Formatter
     
     %% Cross-component connections
     HybridSearchTool --> KeywordExtractor
-    HybridSearchTool --> DataSourceJudgment
+    HybridSearchTool --> DataSourceJudge
     HybridSearchTool --> QualityEvaluator
     CQLSearchEngine --> ResultMerger
+    
+    %% Agent Orchestration connections
+    QualityEvaluator --> AgentHandoverManager
+    AgentHandoverManager --> AgentSelector
+    AgentHandoverManager --> QualityThresholdManager
+    AgentSelector --> ResponseGenerationAgent
+    AgentSelector --> FallbackSearchAgent
+    
+    %% Response Generation connections
+    ResponseGenerationAgent --> LLMChainManager
+    FallbackSearchAgent --> LLMChainManager
+    FallbackSearchAgent --> HybridSearchTool
 ```
 
 ### **2.4 インフラストラクチャ層コンポーネント**
@@ -269,10 +301,10 @@ graph TB
         end
         
         subgraph "🌐 External Integrations"
-            APIClientBase[API Client Base]
-            GeminiClient[Gemini API Client]
-            ConfluenceClient[Confluence API Client]
-            JiraClient[Jira API Client]
+            AtlassianAPIClient[AtlassianAPIClient]
+            GeminiIntegration[Gemini AI Integration]
+            RestAPIConnector[REST API Connector]
+            AuthenticationHandler[Authentication Handler]
         end
         
         subgraph "🔒 Security & Auth"
@@ -298,19 +330,20 @@ graph TB
     PerformanceMonitor --> MetricsCollector
     
     %% External Integration connections
-    GeminiClient --> APIClientBase
-    ConfluenceClient --> APIClientBase
-    JiraClient --> APIClientBase
+    AtlassianAPIClient --> RestAPIConnector
+    AtlassianAPIClient --> AuthenticationHandler
+    GeminiIntegration --> RestAPIConnector
     
     %% Security connections
-    APIClientBase --> AuthManager
+    RestAPIConnector --> AuthManager
     AuthManager --> TokenManager
-    APIClientBase --> RateLimiter
+    RestAPIConnector --> RateLimiter
 
     %% Cross-layer dependencies
     CacheManager -.->|uses| SettingsManager
-    APIClientBase -.->|uses| LogConfig
+    AtlassianAPIClient -.->|uses| LogConfig
     PerformanceMonitor -.->|monitors| DatabaseConnector
+    AtlassianAPIClient -.->|uses| SettingsManager
 ```
 
 ---

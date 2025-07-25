@@ -23,8 +23,10 @@ flowchart TD
     InitializeSession --> LoadHistory[📂 会話履歴読み込み]
     LoadHistory --> StartProcess[⚙️ プロセス開始]
     
-    StartProcess --> HybridSearch[🔍 ハイブリッド検索実行]
-    HybridSearch --> FormatResponse[📝 回答フォーマット]
+    StartProcess --> HybridSearchApp[🤖 HybridSearchApplication実行]
+    HybridSearchApp --> ExecuteFixedPipeline[📋 固定パイプライン実行]
+    ExecuteFixedPipeline --> ExecuteAgentHandover[🤝 Agent連携実行]
+    ExecuteAgentHandover --> FormatResponse[📝 回答フォーマット]
     FormatResponse --> SaveHistory[💾 履歴保存]
     SaveHistory --> DisplayResult[📺 結果表示]
     
@@ -40,7 +42,9 @@ flowchart TD
     InvalidInput --> WaitInput
     
     %% エラーハンドリング
-    HybridSearch -->|エラー| HandleError[⚠️ エラー処理]
+    HybridSearchApp -->|エラー| HandleError[⚠️ エラー処理]
+    ExecuteFixedPipeline -->|パイプラインエラー| HandleError
+    ExecuteAgentHandover -->|Agent連携エラー| HandleError
     HandleError --> ShowErrorMessage[📢 エラーメッセージ表示]
     ShowErrorMessage --> WaitInput
 ```
@@ -49,41 +53,46 @@ flowchart TD
 
 ## 🔍 **2. ハイブリッド検索詳細フロー**
 
-### **2.1 Step1-4統合処理フロー**
+### **2.1 Phase1: 固定検索パイプライン (Step2-5)**
 ```mermaid
 flowchart TD
-    SearchStart([🔍 ハイブリッド検索開始]) --> Step1Start[📝 Step1開始: キーワード抽出]
+    SearchStart([🔍 ハイブリッド検索開始]) --> PhaseCheck[🎯 Phase判定]
+    PhaseCheck --> Phase1Start[📋 Phase1: 固定パイプライン開始]
     
-    %% Step1: キーワード抽出
-    Step1Start --> CheckGemini{Gemini API利用可能？}
+    %% Step1: フィルタ機能（UI処理済み）
+    Phase1Start --> Step1Note[📝 Step1: フィルタ機能（UI処理済み）]
+    Step1Note --> Step2Start[🔍 Step2開始: キーワード抽出]
+    
+    %% Step2: キーワード抽出
+    Step2Start --> CheckGemini{Gemini API利用可能？}
     CheckGemini -->|Yes| GeminiExtract[🤖 Gemini AIによる抽出]
     CheckGemini -->|No| RuleExtract[📋 ルールベース抽出]
     
     GeminiExtract --> GeminiSuccess{抽出成功？}
-    GeminiSuccess -->|Yes| Step1Complete[✅ Step1完了]
+    GeminiSuccess -->|Yes| Step2Complete[✅ Step2完了]
     GeminiSuccess -->|No| FallbackToRules[🔄 ルールベースにフォールバック]
-    FallbackToRules --> Step1Complete
-    RuleExtract --> Step1Complete
+    FallbackToRules --> Step2Complete
+    RuleExtract --> Step2Complete
     
-    %% Step2: データソース判定  
-    Step1Complete --> Step2Start[🎯 Step2開始: データソース判定]
-    Step2Start --> AnalyzeKeywords[🔍 キーワード文脈分析]
+    %% Step3: データソース判定  
+    Step2Complete --> Step3Start[🎯 Step3開始: データソース判定]
+    Step3Start --> AnalyzeKeywords[🔍 キーワード文脈分析]
     AnalyzeKeywords --> CalculateConfidence[📊 信頼度計算]
     CalculateConfidence --> ConfidenceCheck{信頼度 > 0.7？}
     
     ConfidenceCheck -->|Yes| PrimarySource[✅ 主要データソース決定]
     ConfidenceCheck -->|No| BothSources[🔄 両方検索]
-    PrimarySource --> Step2Complete[✅ Step2完了]
-    BothSources --> Step2Complete
+    PrimarySource --> Step3Complete[✅ Step3完了]
+    BothSources --> Step3Complete
     
-    %% Step3: CQL検索実行
-    Step2Complete --> Step3Start[🔍 Step3開始: CQL検索実行]
+    %% Step4: CQL検索実行
+    Step3Complete --> Step4Start[🔍 Step4開始: CQL検索実行]
     
-    Step3Start --> CheckCache{キャッシュ確認}
+    Step4Start --> CheckCache{キャッシュ確認}
     CheckCache -->|Hit| CacheResult[💾 キャッシュから結果取得]
     CheckCache -->|Miss| ExecuteSearch[🌐 実際の検索実行]
     
-    CacheResult --> Step3Complete[✅ Step3完了]
+    CacheResult --> Step4Complete[✅ Step4完了]
     
     ExecuteSearch --> ParallelSearch{並列検索実行}
     
@@ -104,39 +113,65 @@ flowchart TD
     
     MergeResults --> Deduplicate[🎯 重複除去]
     Deduplicate --> CacheStore[💾 結果をキャッシュ]
-    CacheStore --> Step3Complete
+    CacheStore --> Step4Complete
     
-    %% Step4: 品質評価
-    Step3Complete --> Step4Start[⚖️ Step4開始: 品質評価]
-    Step4Start --> EvaluateQuality[📊 4軸品質評価]
+    %% Step5: 品質評価
+    Step4Complete --> Step5Start[⚖️ Step5開始: 品質評価]
+    Step5Start --> EvaluateQuality[📊 3軸品質評価]
     
-    %% 品質評価の詳細
-    EvaluateQuality --> RelevanceScore[🎯 関連度スコア]
-    EvaluateQuality --> ContentQuality[📝 内容品質]
-    EvaluateQuality --> FreshnessCheck[🕐 新鮮度チェック]
-    EvaluateQuality --> CoverageAnalysis[📊 網羅性分析]
+    %% 品質評価の詳細（3軸評価）
+    EvaluateQuality --> ReliabilityScore[🔐 信頼性スコア (40%)]
+    EvaluateQuality --> RelevanceScore[🎯 関連度スコア (50%)]
+    EvaluateQuality --> EffectivenessScore[⚡ 有効性スコア (10%)]
     
-    RelevanceScore --> QualityMerge[🔄 品質スコア統合]
-    ContentQuality --> QualityMerge
-    FreshnessCheck --> QualityMerge
-    CoverageAnalysis --> QualityMerge
+    ReliabilityScore --> QualityMerge[🔄 品質スコア統合]
+    RelevanceScore --> QualityMerge
+    EffectivenessScore --> QualityMerge
     
-    QualityMerge --> QualityThreshold{品質閾値チェック}
-    QualityThreshold -->|Pass| Step4Complete[✅ Step4完了]
-    QualityThreshold -->|Fail| RetrySearch{再検索？}
+    QualityMerge --> Step5Complete[✅ Step5完了]
+    Step5Complete --> Phase1Complete[✅ Phase1完了]
+```
+
+### **2.2 Phase2: Agent連携システム**
+```mermaid
+flowchart TD
+    Phase1Complete --> Phase2Start[🤖 Phase2: Agent連携開始]
     
-    RetrySearch -->|Yes| AdjustStrategy[🔧 検索戦略調整]
-    RetrySearch -->|No| LowQualityResult[⚠️ 低品質結果として返却]
+    %% Agent連携フロー
+    Phase2Start --> AnalyzeFactors[📊 判断要素分析]
+    AnalyzeFactors --> EvaluateQualityScore{品質スコア評価}
     
-    AdjustStrategy --> ExecuteSearch
-    LowQualityResult --> Step4Complete
+    EvaluateQualityScore -->|≥0.75 高品質| HighQualityPath[✨ 高品質ルート]
+    EvaluateQualityScore -->|<0.75 低品質| LowQualityPath[⚠️ 低品質ルート]
     
-    Step4Complete --> SearchEnd([🏁 ハイブリッド検索完了])
+    %% 高品質ルート: 直接回答生成
+    HighQualityPath --> SelectResponseAgent[🎯 ResponseGenerationAgent選択]
+    SelectResponseAgent --> FormatResults[📝 検索結果フォーマット]
+    FormatResults --> GenerateResponse[🤖 LLMChain回答生成]
+    GenerateResponse --> ResponseComplete[✅ 回答生成完了]
+    
+    %% 低品質ルート: フォールバック検索
+    LowQualityPath --> SelectFallbackAgent[🔄 FallbackSearchAgent選択]
+    SelectFallbackAgent --> EnhancedSearch[🔍 追加検索実行]
+    EnhancedSearch --> CombineResults[🔄 結果統合]
+    CombineResults --> DelegateToResponse[🤖 ResponseAgent委譲]
+    DelegateToResponse --> GenerateResponse
+    
+    %% 共通終了処理
+    ResponseComplete --> RecordHandover[📊 連携履歴記録]
+    RecordHandover --> Phase2Complete[✅ Phase2完了]
+    Phase2Complete --> SearchEnd([🏁 ハイブリッド検索完了])
     
     %% エラーハンドリング
     ExecuteSearch -->|API Error| APIErrorHandle[⚠️ API エラーハンドリング]
     APIErrorHandle --> FallbackSearch[🔄 フォールバック検索]
-    FallbackSearch --> Step3Complete
+    FallbackSearch --> Step4Complete
+    
+    AnalyzeFactors -->|Agent選択エラー| AgentErrorHandle[⚠️ Agent選択エラー]
+    AgentErrorHandle --> SelectFallbackAgent
+    GenerateResponse -->|LLM生成エラー| LLMErrorHandle[⚠️ LLM生成エラー]
+    LLMErrorHandle --> DefaultResponse[📝 デフォルト回答生成]
+    DefaultResponse --> ResponseComplete
 ```
 
 ---

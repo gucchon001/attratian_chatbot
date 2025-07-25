@@ -11,52 +11,101 @@
 
 ---
 
-## ⏰ **1. メインシーケンス - ユーザー質問処理フロー**
+## 2.1. メインシーケンス（実装版）
 
-### **1.1 全体処理フロー概観**
 ```mermaid
 sequenceDiagram
     participant User as 👤 ユーザー
-    participant UI as 🎨 Streamlit UI
-    participant Agent as 🧠 SpecBotAgent
-    participant Tracker as 📊 ProcessTracker
-    participant Tool as 🔍 HybridSearchTool
-    participant Memory as 🧠 ConversationMemory
+    participant UI as 🖥️ StreamlitUI
+    participant App as 🎯 HybridSearchApplication
+    participant Tool as 🔧 HybridSearchTool
+    participant Manager as 🤖 AgentHandoverManager
+    participant Cache as 💾 SQLiteCache
+    
+    User->>UI: ユーザー質問入力
+    UI->>App: execute_search(query)
+    
+    App->>Tool: search(query)
+    Note over Tool: Step1-4: 固定検索パイプライン
+    Tool->>Cache: フィルター条件取得
+    Cache-->>Tool: キャッシュデータ
+    Tool->>Tool: Step1: フィルタ適用
+    Tool->>Tool: Step2: キーワード抽出
+    Tool->>Tool: Step3: CQL/JQL検索
+    Tool->>Tool: Step4: 品質評価
+    Tool-->>App: 検索結果 + 品質スコア
+    
+    App->>Manager: execute_agent_handover(results, score, query, filters, metadata)
+    Note over Manager: Step5: Agent連携判定
+    Manager->>Manager: AgentSelector.select_agent(quality_score)
+    
+    alt 高品質結果 (90%+)
+        Manager->>Manager: ResponseGenerationAgent.generate_response()
+        Note over Manager: CLIENTTOMO最適化回答生成
+    else 低品質結果 (90%未満)
+        Manager->>Manager: FallbackSearchAgent.search_exploratory()
+        Note over Manager: 探索的再検索 + 回答生成
+    end
+    
+    Manager-->>App: 最終統合回答
+    App-->>UI: 回答 + プロセス詳細
+    UI-->>User: 結果表示 + 思考プロセス可視化
+```
 
-    User->>UI: 質問入力「ログイン機能について教えて」
-    UI->>Agent: process_request(query, session_id)
+## 2.2. 詳細Agent連携シーケンス（実装版）
+
+```mermaid
+sequenceDiagram
+    participant Manager as 🤖 AgentHandoverManager
+    participant Selector as 🎯 AgentSelector
+    participant ResponseAgent as 📝 ResponseGenerationAgent
+    participant FallbackAgent as 🔍 FallbackSearchAgent
+    participant Memory as 🧠 ConversationMemory
     
-    Agent->>Tracker: start_stage("質問受付")
-    Agent->>Memory: get_conversation_history()
-    Memory-->>Agent: past_conversations[]
+    Manager->>Selector: select_agent(quality_score, context)
+    Selector->>Selector: _evaluate_pipeline_quality(results)
+    Selector->>Selector: _should_escalate_to_fallback(score, context)
+    Selector-->>Manager: selected_agent_type
     
-    Agent->>Tool: _run(query, context)
-    Tool-->>Agent: formatted_response
+    alt ResponseGenerationAgent選択
+        Manager->>ResponseAgent: generate_response(results, query)
+        ResponseAgent->>ResponseAgent: _enhance_response_with_sources(response, results)
+        ResponseAgent->>ResponseAgent: _generate_sources_section(results)
+        ResponseAgent->>ResponseAgent: _generate_followup_suggestions(query, results)
+        ResponseAgent-->>Manager: 統合回答 + ソース情報 + 深掘り提案
+        
+    else FallbackSearchAgent選択
+        Manager->>FallbackAgent: search_exploratory(query, context)
+        FallbackAgent->>FallbackAgent: _init_react_agent()
+        FallbackAgent->>FallbackAgent: AtlassianAPIClient探索検索
+        FallbackAgent-->>Manager: 探索的検索結果
+        Manager->>ResponseAgent: generate_response(fallback_results, query)
+        ResponseAgent-->>Manager: 統合回答
+    end
     
-    Agent->>Memory: save_conversation(user_msg, bot_response)
-    Agent->>Tracker: complete_stage("回答生成完了")
-    
-    Agent-->>UI: {response, thinking_process, sources}
-    UI-->>User: 回答表示 + 思考プロセス
+    Manager->>Memory: 会話履歴更新
+    Manager->>Manager: _log_handover_event(agent_type, metadata)
+    Manager-->>Manager: handover_history更新
 ```
 
 ---
 
 ## 🔍 **2. ハイブリッド検索詳細シーケンス**
 
-### **2.1 Step1-4処理フロー**
+### **2.1 Step1-5処理フロー**
 ```mermaid
 sequenceDiagram
     participant Tool as 🔍 HybridSearchTool
     participant Tracker as 📊 ProcessTracker
     participant Step1 as 📝 KeywordExtractor
-    participant Step2 as 🎯 DataSourceJudgment
-    participant Step3 as 🔍 CQLSearch
+    participant Step2 as 🎯 DataSourceJudge
+    participant Step3 as 🔍 CQLSearchEngine
     participant Step4 as ⚖️ QualityEvaluator
+    participant Step5 as 🤝 AgentHandoverManager
 
     Tool->>Tracker: start_stage("ハイブリッド検索開始")
     
-    Note over Tool,Step4: Step1: キーワード抽出
+    Note over Tool,Step5: Step1: キーワード抽出
     Tool->>Step1: extract_keywords(query)
     Tool->>Tracker: start_stage("キーワード抽出")
     Step1->>Step1: _classify_question_type(query)
@@ -64,7 +113,7 @@ sequenceDiagram
     Step1-->>Tool: {keywords, question_type, confidence}
     Tool->>Tracker: complete_stage("キーワード抽出", result)
     
-    Note over Tool,Step4: Step2: データソース判定
+    Note over Tool,Step5: Step2: データソース判定
     Tool->>Step2: judge_optimal_datasource(keywords, question_type)
     Tool->>Tracker: start_stage("データソース判定")
     Step2->>Step2: _analyze_keyword_context(keywords)
@@ -72,7 +121,7 @@ sequenceDiagram
     Step2-->>Tool: {primary_source, confidence, reasoning}
     Tool->>Tracker: complete_stage("データソース判定", result)
     
-    Note over Tool,Step4: Step3: CQL検索実行
+    Note over Tool,Step5: Step3: CQL検索実行
     Tool->>Step3: search_confluence(keywords, filters)
     Tool->>Tracker: start_stage("CQL検索実行")
     Step3->>Step3: _execute_strategy1(keywords)
@@ -82,7 +131,7 @@ sequenceDiagram
     Step3-->>Tool: {results, total_found, execution_time}
     Tool->>Tracker: complete_stage("CQL検索実行", result)
     
-    Note over Tool,Step4: Step4: 品質評価
+    Note over Tool,Step5: Step4: 品質評価
     Tool->>Step4: evaluate_search_quality(results, keywords)
     Tool->>Tracker: start_stage("品質評価")
     Step4->>Step4: _calculate_relevance_score(results, keywords)
@@ -91,6 +140,14 @@ sequenceDiagram
     Step4->>Step4: _analyze_coverage(results, keywords)
     Step4-->>Tool: {overall_score, detailed_scores}
     Tool->>Tracker: complete_stage("品質評価", result)
+    
+    Note over Tool,Step5: Step5: Agent連携
+    Tool->>Step5: handover_to_agent(results, quality_score, query)
+    Tool->>Tracker: start_stage("Agent連携")
+    Step5->>Step5: _analyze_decision_factors(results, score)
+    Step5->>Step5: _decide_strategy(factors)
+    Step5-->>Tool: {selected_agent, strategy_params}
+    Tool->>Tracker: complete_stage("Agent連携", result)
     
     Tool->>Tracker: complete_stage("ハイブリッド検索完了")
     Tool->>Tool: _format_final_response(all_results)
