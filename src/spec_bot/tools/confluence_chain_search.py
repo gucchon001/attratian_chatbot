@@ -34,7 +34,13 @@ class ConfluenceChainSearch:
     
     def __init__(self):
         """チェーン検索システムの初期化"""
-        self.llm = self._initialize_llm()
+        # 従来の実装を修正してChatGoogleGenerativeAIに統一
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.gemini_model,
+            api_key=settings.gemini_api_key,
+            temperature=0.1,  # 分析精度重視で低温度設定
+            max_tokens=2048
+        )
         self.prompts = self._initialize_prompts()
         logger.info("ConfluenceChainSearch初期化完了")
     
@@ -42,7 +48,7 @@ class ConfluenceChainSearch:
         """LLMの初期化"""
         return ChatGoogleGenerativeAI(
             model=settings.gemini_model,
-            google_api_key=settings.gemini_api_key,
+            api_key=settings.gemini_api_key,
             temperature=0.1,  # 分析精度重視で低温度設定
             max_tokens=2048
         )

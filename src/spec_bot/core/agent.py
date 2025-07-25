@@ -57,7 +57,7 @@ class SpecBotAgent:
             
             self.llm = ChatGoogleGenerativeAI(
                 model=settings.gemini_model,
-                google_api_key=settings.gemini_api_key,
+                api_key=settings.gemini_api_key,
                 temperature=settings.gemini_temperature,
                 max_tokens=min(settings.gemini_max_tokens, 2048),  # トークン制限を安全に
                 convert_system_message_to_human=True,  # システムメッセージ変換を追加

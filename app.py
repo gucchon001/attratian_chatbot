@@ -1,14 +1,15 @@
 """
-仕様書作成支援ボット - メインアプリケーション v2.0
+仕様書作成支援ボット - 統合版メインアプリケーション v3.0
 
-新しいディレクトリ構造に対応したエントリーポイントです。
+統合版spec_bot_mvpのエントリーポイントです。
+実データ統合、思考プロセス可視化、実行時間測定機能を含みます。
 
 Usage:
-    streamlit run app.py
+    streamlit run app.py --server.port 8402
     
-New Structure:
-    spec_bot/         # メインモジュール（旧src/spec_bot_mvp）
-    config/           # 設定ファイル
+Structure:
+    spec_bot_mvp/     # 統合版メインモジュール
+    config/           # 設定ファイル（settings.ini, secrets.env）
 """
 
 import sys
@@ -20,17 +21,22 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 try:
-    from src.spec_bot.ui.streamlit_app import main
+    # 統合版のstreamlit_app_integratedをインポート
+    from src.spec_bot_mvp.ui.streamlit_app_integrated import main
     
     if __name__ == "__main__":
+        print("🚀 統合版仕様書作成支援ボット起動中...")
+        print("📊 実データ統合機能: ✅")
+        print("🧠 思考プロセス可視化: ✅") 
+        print("⏱️ 実行時間測定: ✅")
         main()
         
 except ImportError as e:
-    print(f"モジュールのインポートに失敗しました: {e}")
+    print(f"❌ 統合版モジュールのインポートに失敗しました: {e}")
     print("必要な依存関係がインストールされているか確認してください:")
     print("pip install -r requirements.txt")
     print(f"現在のPython Path: {sys.path}")
     sys.exit(1)
 except Exception as e:
-    print(f"アプリケーションの起動に失敗しました: {e}")
+    print(f"❌ 統合版アプリケーションの起動に失敗しました: {e}")
     sys.exit(1) 

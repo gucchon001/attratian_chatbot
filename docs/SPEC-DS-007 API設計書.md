@@ -581,7 +581,7 @@ class Settings:
     confluence_username: str  # emailから自動設定
     
     # API認証情報（secrets.envから）
-    google_api_key: str
+    gemini_api_key: str
     jira_api_token: str
     confluence_api_token: str
     
@@ -648,7 +648,7 @@ class AtlassianAPIClient:
 
 #### **3.1.1 API基本情報 (実装済み)**
 - **エンドポイント**: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent`
-- **認証**: API Key認証（環境変数GOOGLE_API_KEY/GEMINI_API_KEY）
+- **認証**: API Key認証（環境変数GEMINI_API_KEY）
 - **リクエスト制限**: 60 requests/minute
 - **実装モデル**: gemini-1.5-flash（実装確認済み）
 - **温度設定**: 0.1（安定性重視）

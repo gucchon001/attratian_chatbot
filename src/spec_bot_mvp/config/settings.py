@@ -20,7 +20,7 @@ class Settings:
         self._config = configparser.ConfigParser()
         self._load_config()
         self._load_secrets()
-        self._construct_atlassian_urls()
+        # _construct_atlassian_urls()を削除 - すべてプロパティで処理
     
     def _load_config(self):
         """設定ファイル（非機密情報）を読み込み"""
@@ -43,33 +43,37 @@ class Settings:
         else:
             print(f"⚠️ secrets.envファイルが見つかりません: {secrets_file}")
     
-    def _construct_atlassian_urls(self):
-        """AtlassianのURLを構築（spec_bot成功パターン）"""
-        self.atlassian_domain = self._config.get('atlassian', 'domain', fallback='giginc.atlassian.net')
-        self.email = self._config.get('atlassian', 'email', fallback='kanri@jukust.jp')
-        self.confluence_space = self._config.get('atlassian', 'confluence_space', fallback='CLIENTTOMO')
-        self.target_project = self._config.get('atlassian', 'target_project', fallback='CTJ')
-        
-        # Atlassian URLを spec_bot/ と同じ形式で構築
-        self.jira_url = f"https://{self.atlassian_domain}"
-        self.confluence_url = f"https://{self.atlassian_domain}"
-        
-        print(f"🔗 Atlassian URL構築: {self.jira_url}, {self.confluence_url}")
-    
     # Atlassian設定（spec_bot互換）
     @property
     def atlassian_email(self) -> str:
-        return self.email
+        return self._config.get('atlassian', 'email', fallback='kanri@jukust.jp')
     
     @property
     def atlassian_api_token(self) -> str:
         """Atlassian API トークン（secrets.envまたは環境変数から取得）"""
         return os.getenv('ATLASSIAN_API_TOKEN', '')
     
+    @property
+    def atlassian_domain(self) -> str:
+        return self._config.get('atlassian', 'domain', fallback='giginc.atlassian.net')
+    
+    @property
+    def confluence_space(self) -> str:
+        return self._config.get('atlassian', 'confluence_space', fallback='CLIENTTOMO')
+    
+    @property
+    def jira_url(self) -> str:
+        return f"https://{self.atlassian_domain}"
+    
+    @property
+    def confluence_url(self) -> str:
+        return f"https://{self.atlassian_domain}"
+    
     # Gemini設定
     @property
     def gemini_model(self) -> str:
-        return self._config.get('gemini', 'model', fallback='gemini-1.5-flash')
+        """Gemini モデル名（settings.iniから取得）"""
+        return self._config.get('gemini', 'model', fallback='gemini-2.5-flash')
     
     @property
     def gemini_temperature(self) -> float:

@@ -41,43 +41,12 @@ class CQLSearchEngine:
         self._init_api_client()
     
     def _init_api_client(self):
-        """実際のAPI接続クライアント初期化"""
+        """API接続クライアント初期化（模擬データ使用）"""
         self.api_client = None
         self.use_real_api = False
         
-        if ATLASSIAN_CLIENT_AVAILABLE:
-            try:
-                settings = Settings()
-                validation = settings.validate_api_keys()
-                
-                # 実際のAPI設定が完全かチェック
-                if validation.get("jira_api") and validation.get("confluence_api"):
-                    self.api_client = AtlassianAPIClient(
-                        jira_url=settings.jira_url,
-                        jira_username=settings.jira_username,
-                        jira_token=settings.jira_api_token,
-                        confluence_url=settings.confluence_url,
-                        confluence_username=settings.confluence_username,
-                        confluence_token=settings.confluence_api_token
-                    )
-                    
-                    # 実際の接続テスト
-                    connection_test = self.api_client.test_connection()
-                    if connection_test.get("jira") and connection_test.get("confluence"):
-                        self.use_real_api = True
-                        logger.info("✅ 実際のAtlassian API接続を使用します")
-                    else:
-                        logger.warning("⚠️ API接続テスト失敗：模擬データを使用します")
-                        self.api_client = None
-                else:
-                    logger.info("📝 API設定不完全：模擬データを使用します")
-            except Exception as e:
-                logger.error(f"API初期化エラー：模擬データを使用します - {e}")
-        else:
-            logger.info("📝 APIクライアント未使用：模擬データを使用します")
-            
-        if not self.use_real_api:
-            logger.info("🎭 テスト用の模擬データを使用中")
+        # 現在は spec_bot が稼働中のため、spec_bot_mvp では模擬データのみ使用
+        logger.info("🎭 spec_bot_mvp: テスト用の模擬データを使用中")
 
     def _init_search_strategies(self):
         """検索戦略の初期化"""

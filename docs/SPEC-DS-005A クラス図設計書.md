@@ -165,7 +165,7 @@ classDiagram
 
     class Settings {
         +project_root: Path
-        +google_api_key: str
+        +gemini_api_key: str
         +jira_url: str
         +jira_username: str
         +jira_api_token: str

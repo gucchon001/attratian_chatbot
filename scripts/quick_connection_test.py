@@ -108,17 +108,19 @@ def test_gemini():
     print("Gemini API接続テスト")
     print("="*50)
     
+    # Gemini API設定確認
+    if not settings.gemini_api_key or settings.gemini_api_key == "your_gemini_api_key_here":
+        print("SKIP: Gemini APIキーが設定されていません")
+        return True
+    
     try:
-        if not settings.google_api_key or settings.google_api_key == "your_gemini_api_key_here":
-            print("SKIP: Gemini APIキーが設定されていません")
-            return True
-        
+        # テスト用短文生成
         from langchain_google_genai import ChatGoogleGenerativeAI
         
         print("Gemini API接続中...")
         llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
-            google_api_key=settings.google_api_key,
+            model=settings.gemini_model,
+            api_key=settings.gemini_api_key,
             temperature=0
         )
         

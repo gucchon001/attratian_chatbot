@@ -9,6 +9,7 @@ Atlassian API（Jira/Confluence）とGemini APIの入出力を
 import time
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from src.spec_bot.config.settings import Settings
 
 
 class ApiLoggingMiddleware:
@@ -33,12 +34,17 @@ class ApiLoggingMiddleware:
     def log_gemini_request(
         self, 
         prompt: str, 
-        model: str = "gemini-pro", 
+        model: str = None, 
         temperature: float = 0.1,
         max_tokens: int = 2048,
         request_type: str = "unknown"
     ):
         """Gemini APIリクエストをログ記録"""
+        # settingsからモデル名を取得
+        if model is None:
+            from src.spec_bot.config.settings import Settings
+            settings = Settings()
+            model = settings.gemini_model
         if not self.detailed_logger or not self.current_question_id:
             return
         
@@ -59,7 +65,7 @@ class ApiLoggingMiddleware:
         # フルプロンプトログ
         self.detailed_logger.log_full_prompt(
             self.current_question_id,
-            f"Gemini_{request_type}",
+            f"Gemini_{response}",
             prompt
         )
     

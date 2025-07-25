@@ -52,7 +52,7 @@ class ResponseGenerationAgent:
         try:
             self.llm = ChatGoogleGenerativeAI(
                 model=self.settings.gemini_model,  # settings.iniから読み込み
-                google_api_key=self.settings.google_api_key,
+                api_key=self.settings.gemini_api_key,
                 temperature=self.settings.gemini_temperature,  # settings.iniから読み込み
                 max_output_tokens=self.settings.gemini_max_tokens  # settings.iniから読み込み
             )

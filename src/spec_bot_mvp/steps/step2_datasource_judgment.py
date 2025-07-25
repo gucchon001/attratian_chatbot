@@ -36,21 +36,18 @@ class DataSourceJudge:
     
     def _init_gemini(self) -> bool:
         """Gemini AI初期化"""
-        if not ChatGoogleGenerativeAI or not self.settings.google_api_key:
-            logger.warning("Gemini API利用不可 - 検索用キーワード最適化スキップ")
-            return False
-            
-        try:
-            self.llm = ChatGoogleGenerativeAI(
-                model=self.settings.gemini_model,  # settings.iniから読み込み
-                google_api_key=self.settings.google_api_key,
-                temperature=self.settings.gemini_temperature  # settings.iniから読み込み
-            )
-            logger.info(f"Gemini AI初期化成功（Step2）: {self.settings.gemini_model}")
-            return True
-        except Exception as e:
-            logger.error(f"Gemini AI初期化失敗（Step2）: {e}")
-            return False
+        # Gemini API設定チェック
+        if not ChatGoogleGenerativeAI or not self.settings.gemini_api_key:
+            raise ValueError("Gemini API設定またはライブラリが利用できません")
+        
+        # Gemini初期化
+        self.llm = ChatGoogleGenerativeAI(
+            api_key=self.settings.gemini_api_key,
+            model=self.settings.gemini_model,  # settings.iniから読み込み
+            temperature=self.settings.gemini_temperature  # settings.iniから読み込み
+        )
+        logger.info(f"Gemini AI初期化成功（Step2）: {self.settings.gemini_model}")
+        return True
     
     def _init_judgment_rules(self):
         """判定ルールの初期化（仕様書準拠）"""

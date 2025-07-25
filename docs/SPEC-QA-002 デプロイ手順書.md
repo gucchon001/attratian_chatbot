@@ -85,14 +85,14 @@ python-dotenv==1.0.1
 
 * **ローカル開発 (`.env`):**
     ```
-    GOOGLE_API_KEY="your_gemini_api_key"
+    GEMINI_API_KEY="your_gemini_api_key"
     JIRA_URL="https://..."
     ```
 * **本番環境 (Streamlit Secrets / `secrets.toml`形式):**
     * デプロイ設定のSecrets欄には、以下の形式で記述する。
     ```toml
     # .streamlit/secrets.toml
-    GOOGLE_API_KEY = "your_gemini_api_key"
+    GEMINI_API_KEY = "your_gemini_api_key"
     JIRA_URL = "[https://your-domain.atlassian.net](https://your-domain.atlassian.net)"
     JIRA_USERNAME = "your-email@example.com"
     JIRA_API_TOKEN = "your_jira_api_token"
@@ -105,7 +105,7 @@ python-dotenv==1.0.1
     ```python
     import os
     # ローカルでは.envから、本番ではSecretsから読み込まれる
-    api_key = os.environ.get("GOOGLE_API_KEY") 
+    api_key = os.environ.get("GEMINI_API_KEY") 
     ```
 
 ---
