@@ -9,7 +9,6 @@ import os
 import configparser
 from typing import Optional
 from pathlib import Path
-import streamlit as st
 from dotenv import load_dotenv
 
 class Settings:
