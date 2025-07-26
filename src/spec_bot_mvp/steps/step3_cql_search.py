@@ -41,13 +41,43 @@ class CQLSearchEngine:
         self._init_api_client()
     
     def _init_api_client(self):
-        """API接続クライアント初期化（模擬データ使用）"""
-        self.api_client = None
-        self.use_real_api = False
-        
-        # 現在は spec_bot が稼働中のため、spec_bot_mvp では模擬データのみ使用
-        logger.info("🎭 spec_bot_mvp: テスト用の模擬データを使用中")
-
+        """API接続クライアント初期化（本番API対応）"""
+        try:
+            # Settings読み込み
+            settings = Settings()
+            
+            # API設定確認
+            if all([
+                settings.jira_base_url, settings.jira_username, settings.jira_token,
+                settings.confluence_base_url, settings.confluence_username, settings.confluence_token
+            ]):
+                # 実際のAPI接続を有効化
+                self.api_client = AtlassianAPIClient(
+                    jira_url=settings.jira_base_url,
+                    jira_username=settings.jira_username,
+                    jira_token=settings.jira_token,
+                    confluence_url=settings.confluence_base_url,
+                    confluence_username=settings.confluence_username,
+                    confluence_token=settings.confluence_token
+                )
+                self.use_real_api = True
+                logger.info("✅ 本番API接続を有効化")
+                
+                # 接続テスト
+                connection_status = self.api_client.test_connection()
+                logger.info(f"🔍 API接続テスト結果: {connection_status}")
+                
+            else:
+                logger.warning("⚠️ API設定が不完全のため模擬データを使用")
+                self.api_client = None
+                self.use_real_api = False
+                
+        except Exception as e:
+            logger.error(f"❌ API接続初期化失敗: {e}")
+            logger.info("🎭 フォールバック: 模擬データを使用")
+            self.api_client = None
+            self.use_real_api = False
+    
     def _init_search_strategies(self):
         """検索戦略の初期化"""
         
@@ -308,113 +338,259 @@ class CQLSearchEngine:
         return " AND ".join(conditions)
     
     def _execute_real_api_search(self, datasource: str, keywords: List[str], strategy: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """実際のAtlassian API検索実行"""
+        """実際のAtlassian API検索実行（spec_bot成功パターン適用）"""
         try:
             max_results = strategy.get("max_results", 50)
             
+            logger.info(f"🌐 実際のAPI検索開始: {datasource} | キーワード: {keywords} | 戦略: {strategy['name']}")
+            
             if datasource == "jira":
+                # Jira検索実行
                 results = self.api_client.search_jira(keywords, max_results)
+                
             elif datasource == "confluence":
-                results = self.api_client.search_confluence(keywords, max_results)
+                # Confluence検索実行（spec_botのCQLエンジンパターンを活用）
+                results = self._execute_confluence_api_search(keywords, strategy, max_results)
+                
             else:
-                logger.warning(f"未対応のデータソース: {datasource}")
+                logger.warning(f"❌ 未対応のデータソース: {datasource}")
                 return []
             
             # 戦略情報を結果に追加
             for result in results:
                 result["strategy"] = strategy["name"]
                 result["weight"] = strategy["weight"]
+                result["search_engine"] = "real_api"
             
+            logger.info(f"✅ 実際のAPI検索完了: {len(results)}件取得 ({strategy['name']})")
             return results
             
         except Exception as e:
-            logger.error(f"実際のAPI検索エラー ({datasource}): {e}")
+            logger.error(f"❌ 実際のAPI検索エラー ({datasource}): {e}")
             # エラー時は空の結果を返す
             return []
     
+    def _execute_confluence_api_search(self, keywords: List[str], strategy: Dict[str, Any], max_results: int) -> List[Dict[str, Any]]:
+        """Confluence専用API検索（spec_botのCQLエンジンパターン適用）"""
+        try:
+            # spec_botの3段階検索戦略を適用
+            if strategy["name"] == "厳密検索":
+                # Strategy1: タイトル優先検索（AND結合）
+                search_terms = []
+                for keyword in keywords[:3]:  # 主要キーワードのみ
+                    search_terms.append(f'title ~ "{keyword}"')
+                cql = " AND ".join(search_terms)
+                cql += ' AND space = "CLIENTTOMO"'
+                
+            elif strategy["name"] == "緩和検索":
+                # Strategy2: OR結合による範囲拡張
+                search_terms = []
+                for keyword in keywords[:5]:  # キーワード拡張
+                    search_terms.append(f'text ~ "{keyword}"')
+                cql = " OR ".join(search_terms)
+                cql = f'({cql}) AND space = "CLIENTTOMO"'
+                
+            elif strategy["name"] == "拡張検索":
+                # Strategy3: 類義語展開
+                expanded_keywords = list(keywords)
+                for keyword in keywords[:2]:  # 主要キーワードのみ展開
+                    synonyms = self.synonym_dict.get(keyword, [])
+                    expanded_keywords.extend(synonyms[:2])
+                
+                search_terms = []
+                for keyword in expanded_keywords[:7]:  # 最大7キーワード
+                    search_terms.append(f'text ~ "{keyword}"')
+                cql = " OR ".join(search_terms)
+                cql = f'({cql}) AND space = "CLIENTTOMO"'
+                
+            else:
+                # デフォルト
+                search_terms = [f'text ~ "{kw}"' for kw in keywords[:3]]
+                cql = " AND ".join(search_terms)
+                cql += ' AND space = "CLIENTTOMO"'
+            
+            # CQL実行（atlassianライブラリ経由）
+            logger.debug(f"📋 CQL実行: {cql}")
+            search_results = self.api_client.confluence.cql(cql, limit=max_results)
+            
+            if not search_results or 'results' not in search_results:
+                logger.warning(f"⚠️ Confluence CQL結果なし: {cql}")
+                return []
+            
+            results = search_results['results']
+            
+            # 結果を統一フォーマットに変換（spec_bot標準化パターン）
+            formatted_results = []
+            for result in results:
+                try:
+                    content = result.get('content', {})
+                    
+                    formatted_result = {
+                        "id": content.get("id"),
+                        "title": content.get("title", ""),
+                        "description": self._extract_confluence_excerpt(content, result),
+                        "space": content.get("space", {}).get("key", ""),
+                        "space_name": content.get("space", {}).get("name", ""),
+                        "type": content.get("type", "page"),
+                        "created": content.get("history", {}).get("createdDate", ""),
+                        "updated": content.get("version", {}).get("when", ""),
+                        "datasource": "confluence",
+                        "url": f"{self.api_client.confluence_url}/pages/viewpage.action?pageId={content.get('id')}",
+                        "strategy_name": strategy["name"],
+                        "cql_used": cql
+                    }
+                    formatted_results.append(formatted_result)
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️ Confluence結果変換エラー: {e}")
+                    continue
+            
+            logger.info(f"✅ Confluence CQL検索完了: {len(formatted_results)}件")
+            return formatted_results
+            
+        except Exception as e:
+            logger.error(f"❌ Confluence API検索エラー: {e}")
+            return []
+    
+    def _extract_confluence_excerpt(self, content: Dict[str, Any], result: Dict[str, Any]) -> str:
+        """Confluenceの抜粋テキストを抽出（spec_bot標準化パターン）"""
+        try:
+            # 1. excerptフィールドを優先使用
+            if 'excerpt' in result and result['excerpt']:
+                return result['excerpt'][:200]
+            
+            # 2. bodyから抽出
+            body = content.get("body", {})
+            if isinstance(body, dict):
+                storage = body.get("storage", {})
+                if isinstance(storage, dict):
+                    html_content = storage.get("value", "")
+                    # HTMLタグを除去してテキスト抽出
+                    import re
+                    text_content = re.sub(r'<[^>]+>', '', html_content)
+                    return text_content.strip()[:200]
+            
+            # 3. フォールバック
+            return content.get("title", "")[:50] + "..."
+            
+        except Exception:
+            return ""
+    
     def _execute_mock_search(self, datasource: str, query: str, strategy: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """模擬検索実行（現実的なテストデータ）"""
+        """模擬検索実行（本番API切り替え対応版）"""
         
         # 検索クエリからキーワード抽出
         query_lower = query.lower()
         is_login_related = any(keyword in query_lower for keyword in ["ログイン", "login", "認証", "auth"])
         
-        # 戦略別結果数調整
-        mock_count = min(strategy["max_results"] // 10, 5) if strategy["name"] == "厳密検索" else min(strategy["max_results"] // 10, 3)
+        # 戦略別結果数調整（本番API準拠）
+        if strategy["name"] == "厳密検索":
+            mock_count = 3  # 高品質・少数
+        elif strategy["name"] == "緩和検索":
+            mock_count = 5  # 中品質・中数
+        elif strategy["name"] == "拡張検索":
+            mock_count = 7  # 範囲広・多数
+        else:
+            mock_count = 3
         
         mock_results = []
         
         if is_login_related:
-            # ログイン機能関連の現実的なテストデータ
+            # ログイン機能関連の本番相当テストデータ
             if datasource == "jira":
                 jira_samples = [
-                    {"id": "AUTH-101", "title": "ログイン画面のUI不具合修正", "type": "Bug", "status": "In Progress"},
-                    {"id": "AUTH-89", "title": "パスワードリセット機能の実装", "type": "Story", "status": "Done"},
-                    {"id": "SEC-45", "title": "二段階認証の導入検討", "type": "Epic", "status": "To Do"},
-                    {"id": "AUTH-156", "title": "セッション管理の改善", "type": "Task", "status": "In Progress"},
-                    {"id": "BUG-234", "title": "ログイン失敗時のエラーメッセージ改善", "type": "Bug", "status": "Review"}
+                    {"id": "AUTH-101", "title": "ログイン画面のUI不具合修正", "type": "Bug", "status": "In Progress", "priority": "High"},
+                    {"id": "AUTH-89", "title": "パスワードリセット機能の実装", "type": "Story", "status": "Done", "priority": "Medium"},
+                    {"id": "SEC-45", "title": "二段階認証の導入検討", "type": "Epic", "status": "To Do", "priority": "High"},
+                    {"id": "AUTH-156", "title": "セッション管理の改善", "type": "Task", "status": "In Progress", "priority": "Medium"},
+                    {"id": "BUG-234", "title": "ログイン失敗時のエラーメッセージ改善", "type": "Bug", "status": "Review", "priority": "Low"},
+                    {"id": "AUTH-203", "title": "OAuth認証の実装", "type": "Story", "status": "In Progress", "priority": "High"},
+                    {"id": "SEC-67", "title": "ログイン履歴機能追加", "type": "Feature", "status": "To Do", "priority": "Low"}
                 ]
                 for i in range(min(mock_count, len(jira_samples))):
                     sample = jira_samples[i]
                     mock_results.append({
                         "id": sample["id"],
-                        "title": f"{sample['title']} ({strategy['name']})",
+                        "title": f"{sample['title']} [{strategy['name']}]",
+                        "description": f"Jira チケット: {sample['title']}の詳細説明...",
                         "type": sample["type"],
                         "status": sample["status"],
+                        "priority": sample["priority"],
                         "assignee": "dev.team@company.com",
-                        "created": "2024-01-15",
+                        "created": "2024-01-15T10:00:00.000Z",
+                        "updated": "2024-01-20T15:30:00.000Z",
                         "strategy": strategy["name"],
                         "weight": strategy["weight"],
-                        "datasource": "jira"
+                        "search_engine": "mock_api",
+                        "datasource": "jira",
+                        "url": f"https://example.atlassian.net/browse/{sample['id']}"
                     })
             else:  # confluence
                 confluence_samples = [
-                    {"id": "page_auth_001", "title": "ログイン機能設計書", "space": "SYSTEM"},
-                    {"id": "page_auth_002", "title": "認証フロー仕様書", "space": "API"},
-                    {"id": "page_auth_003", "title": "ユーザー管理システム要件定義", "space": "SYSTEM"},
-                    {"id": "page_auth_004", "title": "セキュリティポリシー - 認証編", "space": "SECURITY"},
-                    {"id": "page_auth_005", "title": "ログイン画面UI設計ガイドライン", "space": "DESIGN"}
+                    {"id": "page_auth_001", "title": "042_【FIX】会員ログイン・ログアウト機能", "space": "CLIENTTOMO"},
+                    {"id": "page_auth_002", "title": "681_【FIX】クライアント企業ログイン・ログアウト機能", "space": "CLIENTTOMO"},
+                    {"id": "page_auth_003", "title": "451_【FIX】全体管理者ログイン・ログアウト機能", "space": "CLIENTTOMO"},
+                    {"id": "page_auth_004", "title": "ログイン機能API仕様書", "space": "API"},
+                    {"id": "page_auth_005", "title": "認証システム設計書", "space": "SYSTEM"},
+                    {"id": "page_auth_006", "title": "ユーザーセッション管理仕様", "space": "SYSTEM"},
+                    {"id": "page_auth_007", "title": "セキュリティ要件定義 - 認証編", "space": "SECURITY"}
                 ]
                 for i in range(min(mock_count, len(confluence_samples))):
                     sample = confluence_samples[i]
                     mock_results.append({
                         "id": sample["id"],
-                        "title": f"{sample['title']} ({strategy['name']})",
+                        "title": f"{sample['title']} [{strategy['name']}]",
+                        "description": f"Confluence ページ: {sample['title']}の概要説明。この機能の詳細仕様について記載されています...",
                         "space": sample["space"],
+                        "space_name": f"{sample['space']} Space",
                         "type": "page",
-                        "created": "2024-01-10",
+                        "created": "2024-01-10T09:00:00.000Z",
+                        "updated": "2024-01-18T14:20:00.000Z",
                         "strategy": strategy["name"],
                         "weight": strategy["weight"],
-                        "datasource": "confluence"
+                        "search_engine": "mock_api",
+                        "datasource": "confluence",
+                        "url": f"https://example.atlassian.net/wiki/spaces/{sample['space']}/pages/{sample['id']}"
                     })
         else:
-            # その他のクエリ用の汎用テストデータ
+            # その他のクエリ用の汎用テストデータ（本番API準拠フォーマット）
             if datasource == "jira":
                 for i in range(mock_count):
                     mock_results.append({
                         "id": f"PROJ-{200 + i}",
-                        "title": f"システム機能要件 {i+1} ({strategy['name']})",
+                        "title": f"システム機能要件 {i+1} [{strategy['name']}]",
+                        "description": f"プロジェクト要件の詳細説明 {i+1}。システム機能に関する検討事項...",
                         "type": "Story",
                         "status": "Open",
+                        "priority": "Medium",
                         "assignee": "team.member@company.com",
-                        "created": "2024-01-01",
+                        "created": "2024-01-01T08:00:00.000Z",
+                        "updated": "2024-01-15T16:30:00.000Z",
                         "strategy": strategy["name"],
                         "weight": strategy["weight"],
-                        "datasource": "jira"
+                        "search_engine": "mock_api",
+                        "datasource": "jira",
+                        "url": f"https://example.atlassian.net/browse/PROJ-{200 + i}"
                     })
             else:  # confluence
                 for i in range(mock_count):
                     mock_results.append({
                         "id": f"page_{300 + i}",
-                        "title": f"システム仕様書 {i+1} ({strategy['name']})",
+                        "title": f"システム仕様書 {i+1} [{strategy['name']}]",
+                        "description": f"システム仕様書 {i+1}の概要。技術要件と設計詳細について記載...",
                         "space": "TECH",
+                        "space_name": "Technical Documentation",
                         "type": "page",
-                        "created": "2024-01-01",
+                        "created": "2024-01-01T10:00:00.000Z",
+                        "updated": "2024-01-10T13:45:00.000Z",
                         "strategy": strategy["name"],
                         "weight": strategy["weight"],
-                        "datasource": "confluence"
+                        "search_engine": "mock_api",
+                        "datasource": "confluence",
+                        "url": f"https://example.atlassian.net/wiki/spaces/TECH/pages/{300 + i}"
                     })
         
+        logger.info(f"🎭 模擬検索完了 ({strategy['name']}): {len(mock_results)}件生成")
         return mock_results
     
     def _deduplicate_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -432,7 +608,7 @@ class CQLSearchEngine:
     
     def _generate_execution_summary(self, search_results: Dict[str, Any], 
                                   strategies: List[str], primary_datasource: str) -> str:
-        """実行サマリー生成"""
+        """実行サマリー生成（本番API対応版）"""
         
         summary_parts = []
         
@@ -447,5 +623,9 @@ class CQLSearchEngine:
         
         # 主要データソース
         summary_parts.append(f"主要: {primary_datasource.title()}")
+        
+        # API使用状況表示
+        api_status = "本番API" if self.use_real_api else "模擬データ"
+        summary_parts.append(f"エンジン: {api_status}")
         
         return " | ".join(summary_parts) 
