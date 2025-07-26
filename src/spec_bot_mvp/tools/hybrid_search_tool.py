@@ -60,26 +60,49 @@ class HybridSearchTool:
         """LangChain Agent互換のrunメソッド"""
         return self.search(query)
     
-    def search(self, query: str) -> str:
-        """ハイブリッド検索実行（仕様書準拠）"""
+    def search(self, query: str, update_callback=None, in_progress_callback=None) -> Dict[str, Any]:
+        """
+        ハイブリッド検索実行（仕様書準拠）
+        
+        Args:
+            query (str): ユーザーからの検索クエリ
+            update_callback (callable, optional): 各ステップ完了時に呼び出されるコールバック
+            in_progress_callback (callable, optional): 各ステップ開始時に呼び出されるコールバック
+
+        Returns:
+            Dict[str, Any]: 検索結果と各ステップの詳細情報
+        """
         try:
             logger.info(f"ハイブリッド検索開始: {query[:50]}...")
             
             # Step1: フィルタ機能（UIで既に処理済み）
-            # - 階層フィルタ、削除ページフィルタ、データソース選択
+            if in_progress_callback: in_progress_callback("filter_application")
             step1_result = {"status": "ui_processed", "filters_applied": True}
-            
+            if update_callback: update_callback("filter_application", step1_result)
+
             # Step2: ユーザー質問解析・抽出
+            if in_progress_callback: in_progress_callback("analysis")
             step2_keyword_result = self.extractor.extract_keywords(query)
             step2_datasource_result = self.judge.judge_datasource(step2_keyword_result)
+            step2_combined_result = {**step2_keyword_result, **step2_datasource_result}
+            if update_callback: update_callback("analysis", step2_combined_result)
             
             # Step3: CQL検索実行
+            if in_progress_callback: in_progress_callback("search_execution")
             step3_result = self.search_engine.execute_search(step2_datasource_result, step2_keyword_result)
+            if update_callback: update_callback("search_execution", step3_result)
             
             # Step4: 品質評価・ランキング
+            if in_progress_callback: in_progress_callback("result_integration")
             step4_result = self.evaluator.evaluate_and_rank(step3_result, step2_keyword_result, step2_datasource_result)
+            if update_callback: update_callback("result_integration", step4_result)
             
-            # 結果データ統合（UI表示用）- 重複表示回避のため表示はUI側に委ねる
+            # Step5: 回答生成（UI側で処理）
+            if in_progress_callback: in_progress_callback("response_generation")
+            # このステップはUI側で最終結果を元に実施されるため、ここでは完了を通知するだけ
+            if update_callback: update_callback("response_generation", {"status": "completed"})
+
+            # 結果データ統合（UI表示用）
             final_result = {
                 "query": query,
                 "step1_result": step1_result,

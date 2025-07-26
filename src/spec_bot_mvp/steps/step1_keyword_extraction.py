@@ -81,13 +81,17 @@ class KeywordExtractor:
         
         # 複合語分解辞書
         self.compound_rules = {
-            "ログイン機能": ["ログイン機能", "ログイン", "認証"],
-            "会員登録": ["会員登録", "会員", "登録", "アカウント"],
-            "クライアント企業": ["クライアント企業", "クライアント", "企業", "法人"],
-            "全体管理者": ["全体管理者", "管理者", "アドミン"],
-            "UI画面": ["UI画面", "UI", "画面", "インターフェース"],
-            "API設計": ["API設計", "API", "設計", "インターフェース"],
-            "データベース": ["データベース", "DB", "データ", "テーブル"]
+            "ログイン機能": ["ログイン機能", "ログイン"],  # 認証を除去
+            "会員登録": ["会員登録", "会員", "登録"],  # アカウントを除去
+            "クライアント企業": ["クライアント企業", "クライアント", "企業"],  # 法人を除去
+            "全体管理者": ["全体管理者", "管理者"],  # アドミンを除去
+            "UI画面": ["UI画面", "UI", "画面"],  # インターフェースを除去
+            "API設計": ["API設計", "API", "設計"],  # インターフェースを除去
+            "データベース": ["データベース", "DB"],  # データ、テーブルを除去
+            # 新しい保守的ルール
+            "パスワード機能": ["パスワード機能", "パスワード"],
+            "認証機能": ["認証機能", "認証"],
+            "セッション管理": ["セッション管理", "セッション"]
         }
     
     def extract_keywords(self, user_query: str) -> Dict[str, Any]:
@@ -115,70 +119,59 @@ class KeywordExtractor:
         return self._extract_with_rules(user_query)
     
     def _extract_with_gemini(self, user_query: str) -> Dict[str, Any]:
-        """Gemini AIによるキーワード抽出（CLIENTTOMO特化版v2.0）"""
+        """Gemini AIによるキーワード抽出（保守的抽出版v3.0）"""
         
-        # CLIENTTOMO特化プロンプト（精度向上版）
+        # 保守的抽出プロンプト（ユーザー意図重視版）
         prompt = f"""
-あなたはCLIENTTOMOプロジェクト専用の上級キーワード抽出AIです。
-88%の検索精度を92%+に向上させるため、CLIENTTOMO特化の高精度抽出を実行してください。
+あなたはCLIENTTOMOプロジェクト専用のキーワード抽出AIです。
+ユーザーの入力意図に忠実で、過度な拡張を避けた保守的な抽出を実行してください。
 
 入力クエリ: "{user_query}"
 
-## CLIENTTOMO専用抽出ルール（v2.0強化版）:
+## 保守的抽出ルール（v3.0）:
 
-### 1. CLIENTTOMO専用複合語分解
-以下の優先ルールで分解してください:
-- 「ログイン機能」 → [ログイン機能, ログイン, 認証]
-- 「会員登録」 → [会員登録, 会員, 登録, アカウント]
-- 「クライアント企業」 → [クライアント企業, クライアント, 企業, 法人]
-- 「全体管理者」 → [全体管理者, 管理者, アドミン]
-- 「UI画面」 → [UI画面, UI, 画面, インターフェース]
-- 「API設計」 → [API設計, API, 設計, インターフェース]
+### 1. 入力文字列重視の原則
+- ユーザーが明示的に記載した語句を最優先
+- 「ログイン機能」→ [ログイン機能, ログイン] （認証やパスワードは追加しない）
+- 「会員登録」→ [会員登録, 会員, 登録] （アカウントは入力にない場合追加しない）
 
-### 2. 高精度除外処理
-以下は検索精度を下げるため厳格に除去:
+### 2. 厳格な拡張制限
+以下の場合のみ関連語を追加:
+- 入力に「機能」があり、その機能に必須の技術用語のみ
+- 入力に略語がある場合の正式名称（UI→ユーザーインターフェース）
+- 表記ゆれの統一（DB→データベース）
+
+### 3. 禁止する過度な拡張
+以下は入力に明記されていない限り追加禁止:
+- 認証系の自動拡張（ログイン→認証、パスワード、セッション）
+- 周辺機能の推測追加
+- 技術詳細の先回り追加
+
+### 4. 除外処理（継続）
+以下は厳格に除去:
 - 汎用動詞: 教えて、確認、調べて、見つけて、探して、検索して
 - 汎用助詞: について、に関する、の件、の内容、の詳細  
 - 汎用名詞: 情報、データ、内容、詳細、状況、方法
-- 質問表現: どうやって、なぜ、いつ、どこで、どれ、何
 
-### 3. CLIENTTOMO業務ドメイン強化
-以下のドメイン知識を活用してキーワード拡張:
-- 認証系: ログイン、ログアウト、認証、パスワード、セッション、トークン
-- 会員系: 会員、ユーザー、アカウント、プロフィール、登録、退会
-- 企業系: クライアント企業、法人、組織、管理者、全体管理者
-- UI系: 画面、フォーム、ボタン、モーダル、ポップアップ、メニュー
-- データ系: データベース、API、JSON、CSV、エクスポート、インポート
-- 決済系: 決済、支払い、課金、料金、プラン、サブスクリプション
-
-### 4. 最適化された4キーワード選択
-重要度順で最大4つ、以下の優先順位で選択:
-1. 業務固有キーワード（最高優先度）
-2. 機能特定キーワード
-3. 技術キーワード
-4. 補完キーワード
-
-### 5. 検索意図高精度分析
-以下の6カテゴリで分類:
-- 機能照会: 特定機能の仕様・動作確認
-- 手順確認: 実装・操作手順の確認
-- 設計詳細: アーキテクチャ・技術詳細
-- トラブル対応: バグ・不具合の調査
-- 仕様変更: 変更・更新に関する情報
-- 全般質問: 概要・一般的な質問
+### 5. 最大2-3キーワード原則
+保守的抽出により、通常2-3個のキーワードで十分な検索精度を実現:
+1. 主要キーワード（入力の核心語句）
+2. 機能キーワード（入力に「機能」がある場合）
+3. 必要最小限の補完（明確な略語展開のみ）
 
 以下の形式でJSONを出力してください:
 {{
-    "primary_keywords": ["最重要キーワード1", "重要キーワード2", "補完キーワード3", "技術キーワード4"],
-    "search_intent": "具体的な検索意図（6カテゴリから選択）",
-    "extraction_method": "gemini_clienttomo_v2",
+    "primary_keywords": ["入力に忠実なキーワード1", "必要最小限のキーワード2"],
+    "search_intent": "具体的な検索意図",
+    "extraction_method": "gemini_conservative_v3",
     "domain_category": "該当する業務ドメイン",
-    "confidence_score": 0.95,
-    "compound_words_detected": ["検出された複合語1", "検出された複合語2"],
-    "removed_particles": ["除去された汎用語1", "除去された汎用語2"]
+    "confidence_score": 0.98,
+    "compound_words_detected": ["検出された複合語"],
+    "removed_particles": ["除去された汎用語"],
+    "conservative_note": "入力に忠実な保守的抽出を実行"
 }}
 
-重要: CLIENTTOMO業務ドメインの専門知識を最大限活用し、検索精度92%+を目指してください。
+重要: 入力されていないキーワードの推測追加は禁止。ユーザーの意図に100%忠実な抽出を実行してください。
 """
         
         response = self.llm.invoke(prompt)
@@ -193,14 +186,14 @@ class KeywordExtractor:
             
             result = json.loads(json_str)
             
-            # 4キーワード制限確保
-            if len(result.get("primary_keywords", [])) > 4:
-                result["primary_keywords"] = result["primary_keywords"][:4]
+            # 保守的抽出のため、3キーワード上限
+            if len(result.get("primary_keywords", [])) > 3:
+                result["primary_keywords"] = result["primary_keywords"][:3]
             
             # 仕様書準拠の戻り値形式に調整
             result["secondary_keywords"] = []  # 仕様書では主要キーワードのみ
             
-            logger.info(f"Geminiキーワード抽出成功（仕様書準拠）: {result['primary_keywords']}")
+            logger.info(f"Gemini保守的抽出成功: {result['primary_keywords']}")
             return result
             
         except (json.JSONDecodeError, KeyError) as e:
@@ -208,21 +201,21 @@ class KeywordExtractor:
             raise
     
     def _extract_with_rules(self, user_query: str) -> Dict[str, Any]:
-        """ルールベースキーワード抽出（CLIENTTOMO特化フォールバック）"""
+        """ルールベースキーワード抽出（保守的フォールバック）"""
         
-        logger.info("CLIENTTOMO特化ルールベース抽出実行")
+        logger.info("保守的ルールベース抽出実行")
         
         # 前処理: 汎用語除去
         cleaned_query = self._remove_generic_terms(user_query)
         
-        # CLIENTTOMO特化キーワード抽出
-        primary_keywords = self._extract_clienttomo_keywords(cleaned_query)
+        # 直接抽出（最優先）
+        direct_keywords = self._extract_direct_keywords(cleaned_query)
         
-        # 複合語分解処理
-        expanded_keywords = self._expand_compound_words(primary_keywords, cleaned_query)
+        # 複合語分解処理（保守的）
+        expanded_keywords = self._expand_compound_words_conservative(direct_keywords, cleaned_query)
         
-        # 最大4キーワード制限
-        final_keywords = expanded_keywords[:4]
+        # 最大3キーワード制限（保守的）
+        final_keywords = expanded_keywords[:3]
         
         # 検索意図分析
         search_intent = self._analyze_search_intent_rules(user_query)
@@ -231,11 +224,12 @@ class KeywordExtractor:
             "primary_keywords": final_keywords,
             "secondary_keywords": [],
             "search_intent": search_intent,
-            "extraction_method": "rule_based_clienttomo",
+            "extraction_method": "rule_based_conservative",
             "domain_category": self._categorize_domain(final_keywords),
-            "confidence_score": 0.75,  # ルールベースの信頼度
+            "confidence_score": 0.80,  # 保守的ルールベースの信頼度
             "compound_words_detected": self._detect_compounds(user_query),
-            "removed_particles": self._get_removed_terms(user_query, cleaned_query)
+            "removed_particles": self._get_removed_terms(user_query, cleaned_query),
+            "conservative_note": "入力に忠実な保守的抽出を実行"
         }
     
     def _remove_generic_terms(self, query: str) -> str:
@@ -332,51 +326,41 @@ class KeywordExtractor:
                 if term in original and term not in cleaned:
                     removed.append(term)
         return removed
+    
+    def _extract_direct_keywords(self, query: str) -> List[str]:
+        """直接キーワード抽出（入力文字列に忠実）"""
+        keywords = []
         
-        # 技術用語辞書
-        tech_terms = {
-            r'ログイン|login': ['ログイン', 'login', '認証', 'authentication'],
-            r'バグ|bug|不具合|エラー|error': ['バグ', 'bug', '不具合', 'エラー', 'issue'],
-            r'API|api': ['API', 'インターフェース', 'endpoint'],
-            r'UI|ui|画面|インターフェース': ['UI', 'interface', '画面', 'ユーザーインターフェース'],
-            r'DB|database|データベース': ['データベース', 'database', 'DB'],
-            r'仕様書|spec|specification': ['仕様書', 'specification', '仕様', 'spec'],
-            r'設計書|design': ['設計書', 'design', '設計'],
-            r'テスト|test': ['テスト', 'test', 'testing', '検証']
-        }
+        # 重要な複合語を最優先で検出
+        for compound in self.compound_rules.keys():
+            if compound in query:
+                keywords.append(compound)
         
-        # 技術用語マッチング
-        query_lower = user_query.lower()
-        for pattern, keywords in tech_terms.items():
-            if re.search(pattern, query_lower, re.IGNORECASE):
-                primary_keywords.extend(keywords[:2])  # 主要2つ
-                secondary_keywords.extend(keywords[2:])  # 残りは補助
+        # 単一キーワード検出（複合語と重複しない場合のみ）
+        for domain, domain_keywords in self.clienttomo_keywords.items():
+            for keyword in domain_keywords:
+                if keyword in query and not any(keyword in comp for comp in keywords):
+                    keywords.append(keyword)
         
-        # 名詞抽出（簡易版）
-        nouns = re.findall(r'[ぁ-んァ-ヶ一-龯a-zA-Z]{2,10}', user_query)
-        for noun in nouns:
-            if len(noun) >= 2 and noun not in primary_keywords:
-                if len(primary_keywords) < 3:
-                    primary_keywords.append(noun)
-                else:
-                    secondary_keywords.append(noun)
+        return keywords
+    
+    def _expand_compound_words_conservative(self, keywords: List[str], query: str) -> List[str]:
+        """保守的複合語分解"""
+        expanded = []
         
-        # 検索意図推定
-        search_intent = self._infer_intent(user_query)
+        # 入力にある複合語のみ分解
+        for keyword in keywords:
+            if keyword in self.compound_rules:
+                # 分解結果の最初の2つのみ追加（保守的）
+                expansions = self.compound_rules[keyword][:2]
+                for expansion in expansions:
+                    if expansion not in expanded:
+                        expanded.append(expansion)
+            else:
+                if keyword not in expanded:
+                    expanded.append(keyword)
         
-        # 重複除去
-        primary_keywords = list(dict.fromkeys(primary_keywords))[:4]
-        secondary_keywords = list(dict.fromkeys(secondary_keywords))[:3]
-        
-        result = {
-            "primary_keywords": primary_keywords,
-            "secondary_keywords": secondary_keywords,
-            "search_intent": search_intent,
-            "extraction_method": "rule_based"
-        }
-        
-        logger.info(f"ルールベースキーワード抽出完了: {primary_keywords}")
-        return result
+        return expanded
     
     def _infer_intent(self, query: str) -> str:
         """検索意図の推定"""
