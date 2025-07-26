@@ -81,24 +81,179 @@ def render_sidebar():
     with st.sidebar:
         st.markdown("## 📊 検索対象データソース")
         
-        # HierarchyFilterUIが利用可能な場合は統合フィルターを表示
+        # フィルターオプション初期化
+        if 'filter_options' not in st.session_state:
+            st.session_state.filter_options = {
+                'statuses': ['TODO', 'In Progress', 'Done', 'Closed'],
+                'users': ['kanri@jukust.jp'],
+                'issue_types': ['Story', 'Bug', 'Task', 'Epic'],
+                'priorities': ['Highest', 'High', 'Medium', 'Low', 'Lowest'],
+                'reporters': ['kanri@jukust.jp'],
+                'custom_tantou': ['フロントエンド', 'バックエンド', 'インフラ', 'QA'],
+                'custom_eikyou_gyoumu': ['ユーザー認証', '決済処理', 'データ連携', 'レポート']
+            }
+        
+        if 'filters' not in st.session_state:
+            st.session_state.filters = {}
+        
+        # Jiraフィルター（最上部に移動）
+        with st.expander("📋 Jiraフィルター", expanded=False):
+            # ステータス選択
+            status_options = ['すべて'] + st.session_state.filter_options['statuses'] 
+            selected_status = st.selectbox(
+                "ステータス:",
+                status_options,
+                index=0,
+                key='filter_jira_status'
+            )
+            st.session_state.filters['jira_status'] = selected_status if selected_status != 'すべて' else None
+            
+            # 担当者選択
+            user_options = ['すべて'] + st.session_state.filter_options['users']
+            selected_user = st.selectbox(
+                "担当者:",
+                user_options,
+                index=0,
+                key='filter_jira_assignee'
+            )
+            st.session_state.filters['jira_assignee'] = selected_user if selected_user != 'すべて' else None
+            
+            # チケットタイプ選択
+            issue_type_options = ['すべて'] + st.session_state.filter_options.get('issue_types', [])
+            selected_issue_type = st.selectbox(
+                "チケットタイプ:",
+                issue_type_options,
+                index=0,
+                key='filter_jira_issue_type'
+            )
+            st.session_state.filters['jira_issue_type'] = selected_issue_type if selected_issue_type != 'すべて' else None
+            
+            # 優先度選択
+            priority_options = ['すべて'] + st.session_state.filter_options.get('priorities', [])
+            selected_priority = st.selectbox(
+                "優先度:",
+                priority_options,
+                index=0,
+                key='filter_jira_priority'
+            )
+            st.session_state.filters['jira_priority'] = selected_priority if selected_priority != 'すべて' else None
+            
+            # 報告者選択
+            reporter_options = ['すべて'] + st.session_state.filter_options.get('reporters', [])
+            selected_reporter = st.selectbox(
+                "報告者:",
+                reporter_options,
+                index=0,
+                key='filter_jira_reporter'
+            )
+            st.session_state.filters['jira_reporter'] = selected_reporter if selected_reporter != 'すべて' else None
+            
+            st.divider()
+            st.caption("**カスタムフィールド (CTJプロジェクト専用)**")
+            
+            # カスタムフィールド - 担当
+            custom_tantou_options = ['すべて'] + st.session_state.filter_options.get('custom_tantou', ['フロントエンド', 'バックエンド', 'インフラ', 'QA'])
+            selected_custom_tantou = st.selectbox(
+                "担当 (カスタム):",
+                custom_tantou_options,
+                index=0,
+                key='filter_jira_custom_tantou'
+            )
+            st.session_state.filters['jira_custom_tantou'] = selected_custom_tantou if selected_custom_tantou != 'すべて' else None
+            
+            # カスタムフィールド - 影響業務
+            custom_eikyou_options = ['すべて'] + st.session_state.filter_options.get('custom_eikyou_gyoumu', ['ユーザー認証', '決済処理', 'データ連携', 'レポート'])
+            selected_custom_eikyou = st.selectbox(
+                "影響業務:",
+                custom_eikyou_options,
+                index=0,
+                key='filter_jira_custom_eikyou'
+            )
+            st.session_state.filters['jira_custom_eikyou'] = selected_custom_eikyou if selected_custom_eikyou != 'すべて' else None
+            
+            st.divider()
+            st.caption("**日付範囲フィルター**")
+            
+            # 作成日範囲
+            col1, col2 = st.columns(2)
+            with col1:
+                created_after = st.date_input(
+                    "作成日 (以降):",
+                    value=None,
+                    key='filter_jira_created_after'
+                )
+                st.session_state.filters['jira_created_after'] = created_after.strftime('%Y-%m-%d') if created_after else None
+            
+            with col2:
+                created_before = st.date_input(
+                    "作成日 (以前):",
+                    value=None,
+                    key='filter_jira_created_before'
+                )
+                st.session_state.filters['jira_created_before'] = created_before.strftime('%Y-%m-%d') if created_before else None
+            
+            # 更新日範囲
+            col1, col2 = st.columns(2)
+            with col1:
+                updated_after = st.date_input(
+                    "更新日 (以降):",
+                    value=None,
+                    key='filter_jira_updated_after'
+                )
+                st.session_state.filters['jira_updated_after'] = updated_after.strftime('%Y-%m-%d') if updated_after else None
+            
+            with col2:
+                updated_before = st.date_input(
+                    "更新日 (以前):",
+                    value=None,
+                    key='filter_jira_updated_before'
+                )
+                st.session_state.filters['jira_updated_before'] = updated_before.strftime('%Y-%m-%d') if updated_before else None
+        
+        # Confluenceフィルター（最上部に移動）
+        with st.expander("📚 Confluenceフィルター", expanded=False):
+            st.caption("**日付範囲フィルター**")
+            
+            # 作成日範囲
+            col1, col2 = st.columns(2)
+            with col1:
+                confluence_created_after = st.date_input(
+                    "作成日 (以降):",
+                    value=None,
+                    key='filter_confluence_created_after'
+                )
+                st.session_state.filters['confluence_created_after'] = confluence_created_after.strftime('%Y-%m-%d') if confluence_created_after else None
+            
+            with col2:
+                confluence_created_before = st.date_input(
+                    "作成日 (以前):",
+                    value=None,
+                    key='filter_confluence_created_before'
+                )
+                st.session_state.filters['confluence_created_before'] = confluence_created_before.strftime('%Y-%m-%d') if confluence_created_before else None
+        
+        st.divider()
+        
+        # HierarchyFilterUIが利用可能な場合は統合フィルターを表示（下部に移動）
         if SPEC_BOT_AVAILABLE and "filter_ui" in st.session_state:
             try:
-                st.session_state.filter_ui.render_filter_ui()
+                selected_items, settings_changed = st.session_state.filter_ui.render_hierarchy_filter()
+                # フィルター選択結果をセッション状態に保存
+                if settings_changed:
+                    st.session_state.hierarchy_filters = selected_items
             except Exception as e:
                 logger.error(f"階層フィルターUI描画エラー: {e}")
                 st.error(f"フィルターUIの描画中にエラー: {e}")
-        else:
-            # 基本フィルター（spec_bot未使用時）
-            st.markdown("### 🔍 高度な検索フィルター")
-            st.info("階層フィルター機能は spec_bot モジュールが必要です")
-            
-            # 基本データソース選択
-            st.markdown("### 📋 Jiraフィルター")
-            jira_enabled = st.checkbox("Jira検索を有効化", value=True)
-            
-            st.markdown("### 📚 Confluenceフィルター")
-            confluence_enabled = st.checkbox("Confluence検索を有効化", value=True)
+        
+        # フィルター操作ボタン
+        if st.button("🗑️ フィルターをクリア", use_container_width=True):
+            # フィルターのクリア処理
+            for key in list(st.session_state.keys()):
+                if key.startswith('filter_'):
+                    del st.session_state[key]
+            if 'filters' in st.session_state:
+                st.session_state.filters.clear()
+            st.rerun()
 
 
 def display_saved_thinking_process(thinking_data: Dict):

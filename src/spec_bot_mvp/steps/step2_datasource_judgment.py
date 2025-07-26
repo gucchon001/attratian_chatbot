@@ -56,9 +56,10 @@ class DataSourceJudge:
         self.judgment_keywords = {
             # Confluence判定語（仕様書2.2.2）
             "confluence": {
-                "仕様": 0.9, "詳細": 0.9, "設計書": 0.9, "API": 0.8, "要件": 0.8,
+                "仕様": 0.9, "詳細": 0.8, "設計書": 0.9, "API": 0.8, "要件": 0.8,
                 "実装": 0.7, "フロー": 0.7, "画面": 0.6, "UI": 0.6, "UX": 0.6,
-                "インターフェース": 0.7, "データベース": 0.7, "システム設計": 0.8, "機能仕様": 0.8
+                "インターフェース": 0.7, "データベース": 0.7, "システム設計": 0.8, "機能仕様": 0.9,
+                "機能": 0.5, "機能詳細": 0.85, "機能の詳細": 0.85, "ログイン機能": 0.7
             },
             
             # Jira判定語（仕様書2.2.2）
@@ -101,8 +102,15 @@ class DataSourceJudge:
         # 1. 重み付きマッチ計算（仕様書2.2.2）
         datasource_scores = self._calculate_weighted_match(primary_keywords)
         
-        # 2. 閾値判定（確信度30%以上で選択）
-        selected_datasources = self._apply_threshold_selection(datasource_scores, threshold=0.3)
+        # 2. 動的閾値判定（複合キーワードで調整）
+        keywords_str = " ".join(primary_keywords).lower()
+        if any(pattern in keywords_str for pattern in ["機能.*詳細", "機能.*仕様", ".*仕様.*詳細"]):
+            threshold = 0.7  # 複合キーワードは厳格
+        elif any(keyword in keywords_str for keyword in ["機能", "詳細", "仕様"]):
+            threshold = 0.5  # 単体キーワードは中程度
+        else:
+            threshold = 0.4  # 一般クエリ
+        selected_datasources = self._apply_threshold_selection(datasource_scores, threshold=threshold)
         
         # 3. Geminiによる検索用キーワード最適化（仕様書2.2.3）
         optimized_keywords = self._optimize_keywords_with_gemini(primary_keywords, selected_datasources)
@@ -132,6 +140,35 @@ class DataSourceJudge:
         """重み付きマッチ計算（仕様書2.2.2）"""
         scores = {"confluence": 0.0, "jira": 0.0}
         
+        # 複合キーワード判定（優先）
+        keywords_str = " ".join(keywords).lower()
+        
+        # 高確信度パターン（Confluence強め）
+        high_confidence_confluence_patterns = [
+            ("機能.*詳細", 0.9), ("機能.*仕様", 0.9), (".*詳細.*仕様", 0.85),
+            ("ログイン.*機能.*詳細", 0.95), ("api.*仕様", 0.9), ("設計.*詳細", 0.9)
+        ]
+        
+        # 高確信度パターン（Jira強め）
+        high_confidence_jira_patterns = [
+            ("チケット.*進捗", 0.9), ("バグ.*修正", 0.95), ("不具合.*対応", 0.9),
+            ("issue.*status", 0.9), ("タスク.*進捗", 0.85)
+        ]
+        
+        import re
+        
+        # パターンマッチング
+        for pattern, weight in high_confidence_confluence_patterns:
+            if re.search(pattern, keywords_str):
+                scores["confluence"] += weight
+                logger.debug(f"Confluence複合パターンマッチ: '{pattern}' (重み: {weight})")
+        
+        for pattern, weight in high_confidence_jira_patterns:
+            if re.search(pattern, keywords_str):
+                scores["jira"] += weight
+                logger.debug(f"Jira複合パターンマッチ: '{pattern}' (重み: {weight})")
+        
+        # 個別キーワード判定（従来通り）
         for keyword in keywords:
             keyword_lower = keyword.lower()
             
@@ -158,7 +195,12 @@ class DataSourceJudge:
         if total_score > 0:
             scores = {k: v / total_score for k, v in scores.items()}
         else:
-            scores = {"confluence": 0.6, "jira": 0.4}  # デフォルト
+            # 機能系クエリの場合はConfluence優先デフォルト
+            has_function_keywords = any(keyword in str(keywords).lower() for keyword in ["機能", "詳細", "仕様"])
+            if has_function_keywords:
+                scores = {"confluence": 0.85, "jira": 0.15}  # 機能系デフォルト
+            else:
+                scores = {"confluence": 0.6, "jira": 0.4}  # 一般デフォルト
         
         return scores
     
