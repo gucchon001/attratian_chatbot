@@ -218,14 +218,14 @@ class CQLSearchEngine:
             }
             
             # 実際の検索実行（API設定により自動切り替え）
-            if self.use_real_api and self.api_client:
+            if self.use_real_api:
                 # 実際のAtlassian API検索
-                api_results = self._execute_real_api_search(datasource, keywords, strategy)
+                api_results = self._execute_api_search(datasource, query, strategy)
                 results["strategy_results"][strategy_id] = api_results
                 results["combined_results"].extend(api_results)
                 logger.info(f"✅ 実際のAPI検索完了 ({strategy['name']}): {len(api_results)}件")
             else:
-                # 模擬検索（テスト用）
+                # 模擬検索（テスト用/フォールバック）
                 mock_results = self._execute_mock_search(datasource, query, strategy)
                 results["strategy_results"][strategy_id] = mock_results
                 results["combined_results"].extend(mock_results)
