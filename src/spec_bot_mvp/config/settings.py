@@ -9,7 +9,6 @@ import os
 import configparser
 from typing import Optional
 from pathlib import Path
-import streamlit as st
 from dotenv import load_dotenv
 
 class Settings:
@@ -61,13 +60,45 @@ class Settings:
     def confluence_space(self) -> str:
         return self._config.get('atlassian', 'confluence_space', fallback='CLIENTTOMO')
     
+    # step3_cql_search.py で期待される設定プロパティ
     @property
-    def jira_url(self) -> str:
+    def jira_base_url(self) -> str:
+        """Jira ベースURL"""
         return f"https://{self.atlassian_domain}"
     
     @property
-    def confluence_url(self) -> str:
+    def jira_username(self) -> str:
+        """Jira ユーザー名（通常はメールアドレス）"""
+        return self.atlassian_email
+    
+    @property
+    def jira_token(self) -> str:
+        """Jira API トークン"""
+        return self.atlassian_api_token
+    
+    @property
+    def confluence_base_url(self) -> str:
+        """Confluence ベースURL"""
         return f"https://{self.atlassian_domain}"
+    
+    @property
+    def confluence_username(self) -> str:
+        """Confluence ユーザー名（通常はメールアドレス）"""
+        return self.atlassian_email
+    
+    @property
+    def confluence_token(self) -> str:
+        """Confluence API トークン"""
+        return self.atlassian_api_token
+    
+    # 互換性のための古いプロパティ（後方互換性保持）
+    @property
+    def jira_url(self) -> str:
+        return self.jira_base_url
+    
+    @property
+    def confluence_url(self) -> str:
+        return self.confluence_base_url
     
     # Gemini設定
     @property
