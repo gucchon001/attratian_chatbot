@@ -23,6 +23,7 @@ except ImportError:
     ChatGoogleGenerativeAI = None
 
 from src.spec_bot_mvp.config.settings import Settings
+from src.spec_bot_mvp.utils.prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -221,28 +222,13 @@ class DataSourceJudge:
             return self._rule_based_keyword_optimization(keywords)
         
         try:
-            prompt = f"""
-検索用キーワード最適化を行ってください。
-
-元のキーワード: {keywords}
-選択されたデータソース: {selected_datasources}
-
-## 最適化ルール（仕様書準拠）:
-
-### 1. 判定専用語の除去
-以下の判定専用語は検索には不要なので除去してください:
-- 仕様, 詳細, 機能, チケット, 進捗, 議事録
-
-### 2. 汎用句の除去  
-検索精度を下げる汎用表現を除去:
-- 動詞: 教えて, 説明して, 整理して, 抽出して, 確認して
-
-### 3. 重要語の抽出
-検索に有効な具体的キーワードのみ抽出してください。
-
-最適化されたキーワードをJSON形式で出力:
-{{"optimized_keywords": ["キーワード1", "キーワード2", "キーワード3"]}}
-"""
+            prompt = load_prompt(
+                "analysis_steps",
+                "step2_datasource_judgment", 
+                "keyword_optimization",
+                keywords=keywords,
+                selected_datasources=selected_datasources
+            )
             
             response = self.llm.invoke(prompt)
             

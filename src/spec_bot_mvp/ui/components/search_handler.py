@@ -4,64 +4,83 @@ from typing import Dict, Any
 
 from src.spec_bot_mvp.tools.hybrid_search_tool import HybridSearchTool
 from src.spec_bot_mvp.ui.components.thinking_process_ui import IntegratedThinkingProcessUI
+from src.spec_bot_mvp.ui.components.enhanced_response_generator import EnhancedResponseGenerator
 
 logger = logging.getLogger(__name__)
 
 def format_search_results(search_data: Dict) -> str:
-    """検索結果データ（辞書）をUI表示用のMarkdown文字列にフォーマットする"""
+    """
+    検索結果データ（辞書）をNotebookLMスタイルの包括的回答に変換
+    Enhanced Response Generatorを使用した高品質回答生成
+    """
     
     if not search_data or "error" in search_data:
         return f"🚨 **検索エラー**\n\n{search_data.get('error', '不明なエラーが発生しました。')}"
 
+    # 検索データの抽出
     query = search_data.get("query", "N/A")
-    step2_keyword = search_data.get("step2_keyword_result", {})
-    step2_datasource = search_data.get("step2_datasource_result", {})
     step3_result = search_data.get("step3_result", {})
     step4_result = search_data.get("step4_result", {})
-
-    # 主要情報の抽出
-    primary_keywords = step2_keyword.get("primary_keywords", [])
-    search_intent = step2_keyword.get("search_intent", "不明")
-    selected_ds = step2_datasource.get("selected_datasources", ["不明"])
-    primary_datasource = selected_ds[0] if selected_ds else "不明"
     
+    # 検索結果の取得
     ranked_results = step4_result.get("ranked_results", [])
-    top_results = ranked_results[:5]  # 上位5件に制限
+    
+    # 検索メタデータの構築
+    search_metadata = {
+        "total_results": step3_result.get("total_results", 0),
+        "execution_summary": step3_result.get("execution_summary", ""),
+        "strategies_executed": step3_result.get("strategies_executed", []),
+        "query_details": step3_result.get("query_details", {})
+    }
+    
+    try:
+        # Enhanced Response Generatorの初期化と実行
+        response_generator = EnhancedResponseGenerator()
+        
+        # NotebookLMスタイルの包括的回答生成
+        comprehensive_response = response_generator.generate_comprehensive_response(
+            query=query,
+            search_results=ranked_results,
+            search_metadata=search_metadata
+        )
+        
+        logger.info(f"✅ NotebookLMスタイル回答生成完了: {len(comprehensive_response)}文字")
+        return comprehensive_response
+        
+    except Exception as e:
+        logger.error(f"❌ Enhanced Response Generator エラー: {e}")
+        
+        # フォールバック: 従来の形式
+        return _generate_fallback_format(query, ranked_results, search_metadata)
 
-    # --- 回答生成 ---
+def _generate_fallback_format(query: str, ranked_results: list, search_metadata: dict) -> str:
+    """エラー時のフォールバック形式（従来型）"""
+    
     output = [
         f"## 🎯 「{query}」の検索結果",
         "---",
-        "### 💡 総括",
-        f"**{len(ranked_results)}件**の関連情報が見つかりました。特に品質の高い上位**{len(top_results)}件**を以下に要約します。",
+        f"**{len(ranked_results)}件**の関連情報が見つかりました。",
         ""
     ]
 
-    # --- 上位結果の要約 ---
-    if not top_results:
-        output.append("**検索結果が見つかりませんでした。** フィルタ条件やキーワードを変更して再度お試しください。")
-    else:
-        output.append("### 📊 高品質な検索結果 TOP5")
-        for i, res in enumerate(top_results, 1):
-            title = res.get("title", "タイトルなし")
-            url = res.get("url", "#")
-            score = res.get("final_score", 0)
-            datasource = res.get("datasource", "不明").capitalize()
-            
-            output.append(f"**{i}. [{title}]({url})**")
-            output.append(f"   - **品質スコア:** `{score:.3f}`")
-            output.append(f"   - **データソース:** `{datasource}`")
-            if "summary" in res and res["summary"]:
-                output.append(f"   - **要約:** {res['summary']}")
-        output.append("")
+    # 結果の簡易表示
+    for i, result in enumerate(ranked_results[:5], 1):
+        title = result.get("title", "タイトルなし")
+        score = result.get("final_score", 0)
+        datasource = result.get("datasource", "unknown").capitalize()
+        excerpt = result.get("excerpt", "")[:150]
+        
+        output.extend([
+            f"### {i}. {title}",
+            f"**データソース**: {datasource} | **品質スコア**: {score:.3f}",
+            "",
+            excerpt + ("..." if len(result.get("excerpt", "")) > 150 else ""),
+            ""
+        ])
 
-    # --- 深掘り提案 ---
-    # ここでは固定の提案だが、将来的には結果に基づいて動的に生成する
     output.extend([
-        "### 🎯 さらなる深掘り・関連情報",
-        "- 「ログイン機能の会員機能について知りたい」",
-        "- 「ログイン認証のセキュリティ仕様を確認したい」",
-        "- 「ログイン後の画面遷移フローを見たい」"
+        "---",
+        "**⚠️ 注意**: AI分析機能でエラーが発生したため、基本形式で表示しています。"
     ])
 
     return "\n".join(output)

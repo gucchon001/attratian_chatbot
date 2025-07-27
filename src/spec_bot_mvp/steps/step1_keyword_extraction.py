@@ -24,6 +24,7 @@ except ImportError:
     ChatGoogleGenerativeAI = None
 
 from src.spec_bot_mvp.config.settings import Settings
+from src.spec_bot_mvp.utils.prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -121,58 +122,13 @@ class KeywordExtractor:
     def _extract_with_gemini(self, user_query: str) -> Dict[str, Any]:
         """Gemini AIによるキーワード抽出（保守的抽出版v3.0）"""
         
-        # 保守的抽出プロンプト（ユーザー意図重視版）
-        prompt = f"""
-あなたはCLIENTTOMOプロジェクト専用のキーワード抽出AIです。
-ユーザーの入力意図に忠実で、過度な拡張を避けた保守的な抽出を実行してください。
-
-入力クエリ: "{user_query}"
-
-## 保守的抽出ルール（v3.0）:
-
-### 1. 入力文字列重視の原則
-- ユーザーが明示的に記載した語句を最優先
-- 「ログイン機能」→ [ログイン機能, ログイン] （認証やパスワードは追加しない）
-- 「会員登録」→ [会員登録, 会員, 登録] （アカウントは入力にない場合追加しない）
-
-### 2. 厳格な拡張制限
-以下の場合のみ関連語を追加:
-- 入力に「機能」があり、その機能に必須の技術用語のみ
-- 入力に略語がある場合の正式名称（UI→ユーザーインターフェース）
-- 表記ゆれの統一（DB→データベース）
-
-### 3. 禁止する過度な拡張
-以下は入力に明記されていない限り追加禁止:
-- 認証系の自動拡張（ログイン→認証、パスワード、セッション）
-- 周辺機能の推測追加
-- 技術詳細の先回り追加
-
-### 4. 除外処理（継続）
-以下は厳格に除去:
-- 汎用動詞: 教えて、確認、調べて、見つけて、探して、検索して
-- 汎用助詞: について、に関する、の件、の内容、の詳細  
-- 汎用名詞: 情報、データ、内容、詳細、状況、方法
-
-### 5. 最大2-3キーワード原則
-保守的抽出により、通常2-3個のキーワードで十分な検索精度を実現:
-1. 主要キーワード（入力の核心語句）
-2. 機能キーワード（入力に「機能」がある場合）
-3. 必要最小限の補完（明確な略語展開のみ）
-
-以下の形式でJSONを出力してください:
-{{
-    "primary_keywords": ["入力に忠実なキーワード1", "必要最小限のキーワード2"],
-    "search_intent": "具体的な検索意図",
-    "extraction_method": "gemini_conservative_v3",
-    "domain_category": "該当する業務ドメイン",
-    "confidence_score": 0.98,
-    "compound_words_detected": ["検出された複合語"],
-    "removed_particles": ["除去された汎用語"],
-    "conservative_note": "入力に忠実な保守的抽出を実行"
-}}
-
-重要: 入力されていないキーワードの推測追加は禁止。ユーザーの意図に100%忠実な抽出を実行してください。
-"""
+        # 保守的抽出プロンプト（外部化済み）
+        prompt = load_prompt(
+            "analysis_steps",
+            "step1_keyword_extraction", 
+            "gemini_conservative_extraction",
+            user_query=user_query
+        )
         
         response = self.llm.invoke(prompt)
         

@@ -261,7 +261,12 @@ class IntegratedThinkingProcessUI:
                 
                 # ステップ1: 質問解析
                 st.markdown("#### 📝 ステップ1: ユーザー質問の解析")
-                st.info(f"「ログイン機能の詳細を教えて」→ **{intent}** として判定")
+                # 実際のユーザークエリを動的に取得
+                user_query = details.get("user_query", details.get("original_query", "ユーザー質問"))
+                if user_query == "ユーザー質問" and keywords:
+                    # キーワードから推測
+                    user_query = f"「{' '.join(keywords)}」に関する質問"
+                st.info(f"「{user_query}」→ **{intent}** として判定")
                 
                 # ステップ2: キーワード抽出
                 st.markdown("#### 🔍 ステップ2: 重要キーワードの抽出")
@@ -372,10 +377,20 @@ class IntegratedThinkingProcessUI:
                             ds_color = "#17a2b8" if datasource == "confluence" else "#6f42c1"
                             st.markdown(f"<div style='background: {ds_color}; color: white; padding: 2px 8px; border-radius: 8px; text-align: center; font-size: 11px;'>{datasource}</div>", unsafe_allow_html=True)
                 
-                # 品質分布統計
-                avg_quality = details.get("avg_quality", 0)
-                max_score = details.get("max_score", 0)
-                high_quality_rate = details.get("high_quality_rate", 0)
+                # 品質分布統計（実際のデータから計算）
+                ranked_results = details.get("ranked_results", [])
+                
+                if ranked_results:
+                    # 実際のfinal_scoreから統計を計算
+                    scores = [r.get("final_score", 0) for r in ranked_results]
+                    avg_quality = sum(scores) / len(scores)
+                    max_score = max(scores)
+                    high_quality_count = sum(1 for score in scores if score >= 0.7)
+                    high_quality_rate = high_quality_count / len(scores) if scores else 0
+                else:
+                    avg_quality = 0
+                    max_score = 0
+                    high_quality_rate = 0
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -383,7 +398,7 @@ class IntegratedThinkingProcessUI:
                 with col2:
                     st.metric("最高品質", f"{max_score:.3f}")
                 with col3:
-                    st.metric("高品質率", f"{high_quality_rate:.1%}" if isinstance(high_quality_rate, (int, float)) else "計算中")
+                    st.metric("高品質率", f"{high_quality_rate:.1%}")
             else:
                 st.warning("品質評価対象の結果がありません")
     
@@ -412,7 +427,11 @@ class IntegratedThinkingProcessUI:
                 elif stage["id"] == "result_integration":
                     ranked = details.get("ranked_results", [])
                     final_selected = len(ranked)
-                    max_quality = details.get("max_score", 0)
+                    # ranked_resultsから実際のfinal_scoreの最大値を計算
+                    if ranked:
+                        max_quality = max(r.get("final_score", 0) for r in ranked)
+                    else:
+                        max_quality = 0
         
         # メトリクスダッシュボード
         col1, col2, col3, col4 = st.columns(4)

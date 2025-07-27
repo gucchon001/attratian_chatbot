@@ -850,12 +850,26 @@ class CQLSearchEngine:
                         "datasource": "confluence"
                     })
         else:
-            # その他のクエリ用の汎用テストデータ
+            # その他のクエリ用の関連性のあるテストデータ
+            query_keywords = self._extract_mock_keywords_from_query(query)
+            base_keyword = query_keywords[0] if query_keywords else "システム"
+            
+            # 「機能」重複を回避するため、末尾の「機能」を除去
+            base_keyword_clean = base_keyword.replace("機能", "") if base_keyword.endswith("機能") else base_keyword
+            
             if datasource == "jira":
+                jira_templates = [
+                    f"{base_keyword}の実装",
+                    f"{base_keyword}に関するバグ修正", 
+                    f"{base_keyword}の改善要求",
+                    f"{base_keyword_clean}機能テスト",
+                    f"{base_keyword}の仕様変更"
+                ]
                 for i in range(mock_count):
+                    template_idx = i % len(jira_templates)
                     mock_results.append({
                         "id": f"PROJ-{200 + i}",
-                        "title": f"システム機能要件 {i+1} ({strategy['name']})",
+                        "title": f"{jira_templates[template_idx]} ({strategy['name']})",
                         "type": "Story",
                         "status": "Open",
                         "assignee": "team.member@company.com",
@@ -865,10 +879,18 @@ class CQLSearchEngine:
                         "datasource": "jira"
                     })
             else:  # confluence
+                confluence_templates = [
+                    f"{base_keyword_clean}機能仕様書",
+                    f"{base_keyword}設計ドキュメント",
+                    f"{base_keyword}に関する要件定義",
+                    f"{base_keyword_clean}機能の使用手順",
+                    f"{base_keyword}システム概要"
+                ]
                 for i in range(mock_count):
+                    template_idx = i % len(confluence_templates)
                     mock_results.append({
                         "id": f"page_{300 + i}",
-                        "title": f"システム仕様書 {i+1} ({strategy['name']})",
+                        "title": f"{confluence_templates[template_idx]} ({strategy['name']})",
                         "space": "TECH",
                         "type": "page",
                         "created": "2024-01-01",
@@ -878,6 +900,42 @@ class CQLSearchEngine:
                     })
         
         return mock_results
+    
+    def _extract_mock_keywords_from_query(self, query: str) -> List[str]:
+        """模擬データ生成用のキーワード抽出"""
+        import re
+        
+        # クエリからキーワードを抽出
+        query_clean = query.replace('"', '').replace("'", "").replace("(", "").replace(")", "")
+        
+        # 除外する汎用語
+        exclude_terms = ["AND", "OR", "space", "title", "text", "=", "~", "CLIENTTOMO"]
+        
+        # キーワード候補を抽出
+        candidates = []
+        
+        # 日本語キーワード（ひらがな・カタカナ・漢字）
+        japanese_words = re.findall(r'[ぁ-んァ-ヶー一-龯]+', query_clean)
+        candidates.extend(japanese_words)
+        
+        # 英語キーワード（3文字以上）
+        english_words = re.findall(r'[a-zA-Z]{3,}', query_clean)
+        candidates.extend(english_words)
+        
+        # 除外語を除去
+        filtered_keywords = []
+        for word in candidates:
+            if word not in exclude_terms and len(word) >= 2:
+                filtered_keywords.append(word)
+        
+        # 重複除去・優先順位付け
+        unique_keywords = []
+        for keyword in filtered_keywords:
+            if keyword not in unique_keywords:
+                unique_keywords.append(keyword)
+        
+        # 最大3個のキーワードを返す
+        return unique_keywords[:3] if unique_keywords else ["機能"]
     
     def _deduplicate_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """結果重複除去"""
