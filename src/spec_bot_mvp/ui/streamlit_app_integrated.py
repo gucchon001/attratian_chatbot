@@ -81,6 +81,35 @@ def render_sidebar():
     with st.sidebar:
         st.markdown("## 📊 検索対象データソース")
         
+        # 🗑️ コンテンツフィルター（新規追加）
+        st.markdown("### 🗑️ コンテンツフィルター")
+        
+        # 削除ページを含むチェックボックス（session_stateへの手動設定を削除）
+        include_deleted = st.checkbox(
+            "削除ページを含む",
+            value=False,
+            help="【削除】【廃止】などのマークが付いたページも検索結果に含める",
+            key="include_deleted_pages"
+        )
+        
+        # 除外フィルター状況の可視化
+        if include_deleted:
+            st.success("🟢 除外フィルター: 無効（すべてのページを表示）")
+        else:
+            st.info("🔴 除外フィルター: 有効（削除・廃止ページを除外）")
+            with st.expander("🔍 除外対象パターン", expanded=False):
+                st.caption("以下のパターンを含むタイトルを除外:")
+                st.markdown("""
+                - 【削除】【削除予定】【削除済み】
+                - 【廃止】【廃止予定】【システム廃止】  
+                - 【終了】【停止】【無効】【利用停止】
+                - 【非推奨】【deprecated】【obsolete】
+                - 【テスト用】【一時的】【暫定】
+                - %%削除%% %%廃止%% などの%記号
+                """)
+        
+        st.divider()
+        
         # フィルターオプション初期化
         if 'filter_options' not in st.session_state:
             st.session_state.filter_options = {
