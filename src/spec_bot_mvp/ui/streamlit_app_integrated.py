@@ -81,7 +81,39 @@ def render_sidebar():
     with st.sidebar:
         st.markdown("## 📊 検索対象データソース")
         
-        # 🗑️ コンテンツフィルター（新規追加）
+        # データソース選択機能（spec_botと同様）
+        st.markdown("### 🎯 データソース選択")
+        
+        # データソース選択の初期化
+        if 'data_sources' not in st.session_state:
+            st.session_state.data_sources = {
+                'confluence': True,
+                'jira': True
+            }
+        
+        confluence_enabled = st.checkbox(
+            "📚 Confluence (仕様書・ドキュメント)",
+            value=st.session_state.data_sources['confluence'],
+            key='sidebar_data_source_confluence',
+            help="Confluenceの仕様書、設計書、議事録などを検索対象に含めます"
+        )
+        st.session_state.data_sources['confluence'] = confluence_enabled
+        
+        jira_enabled = st.checkbox(
+            "🎫 Jira (チケット・タスク)",
+            value=st.session_state.data_sources['jira'],
+            key='sidebar_data_source_jira',
+            help="Jiraのチケット、バグ、ストーリー、タスクを検索対象に含めます"
+        )
+        st.session_state.data_sources['jira'] = jira_enabled
+        
+        # データソースが何も選択されていない場合の警告
+        if not confluence_enabled and not jira_enabled:
+            st.warning("⚠️ 検索対象データソースが選択されていません。")
+        
+        st.divider()
+        
+        # 🗑️ コンテンツフィルター
         st.markdown("### 🗑️ コンテンツフィルター")
         
         # 削除ページを含むチェックボックス

@@ -233,11 +233,19 @@ class CQLSearchEngine:
         # 実行戦略決定
         strategies_to_execute = self._determine_execution_strategies(search_strategy, step2_result)
         
+        # UIでのデータソース選択を取得
+        enabled_datasources = self._get_enabled_datasources()
+        
+        # UIの選択とStep2の判定結果を組み合わせて最終的な検索対象を決定
+        final_datasources = self._determine_final_datasources(datasource_priority, enabled_datasources)
+        
+        logger.info(f"🎯 検索対象データソース決定: {final_datasources} (UI選択: {enabled_datasources}, Step2優先度: {datasource_priority})")
+        
         # データソース別段階的検索実行
         search_results = {}
         query_details = {}
         
-        for datasource in datasource_priority:
+        for datasource in final_datasources:
             if datasource in ["jira", "confluence"]:
                 ds_results, ds_queries = self._execute_progressive_search(
                     datasource=datasource,
@@ -320,8 +328,15 @@ class CQLSearchEngine:
         results["combined_results"] = self._deduplicate_results(results["combined_results"])
         
         # 除外フィルター適用（正規表現による後処理）
+        logger.info(f"🔍 除外フィルター設定確認: enable_exclusion_filter={self.enable_exclusion_filter}")
         if self.enable_exclusion_filter:
+            logger.info("🔍 除外フィルターを実行します")
+            before_count = len(results["combined_results"])
             results["combined_results"] = self._filter_excluded_results(results["combined_results"])
+            after_count = len(results["combined_results"])
+            logger.info(f"🔍 除外フィルター実行結果: {before_count}件 → {after_count}件")
+        else:
+            logger.info("🔍 除外フィルターはスキップされました（設定無効）")
         
         return results, queries
     
@@ -365,6 +380,21 @@ class CQLSearchEngine:
         title_results_count = len(results["combined_results"])
         if title_results_count >= min_sufficient_count:
             logger.info(f"✅ 高精度結果十分取得（{title_results_count}件）→ 追加検索スキップ")
+            
+            # 早期終了でも重複除去と除外フィルターを適用
+            results["combined_results"] = self._deduplicate_results(results["combined_results"])
+            
+            # 除外フィルター適用（正規表現による後処理）
+            logger.info(f"🔍 [早期終了]除外フィルター設定確認: enable_exclusion_filter={self.enable_exclusion_filter}")
+            if self.enable_exclusion_filter:
+                logger.info("🔍 [早期終了]除外フィルターを実行します")
+                before_count = len(results["combined_results"])
+                results["combined_results"] = self._filter_excluded_results(results["combined_results"])
+                after_count = len(results["combined_results"])
+                logger.info(f"🔍 [早期終了]除外フィルター実行結果: {before_count}件 → {after_count}件")
+            else:
+                logger.info("🔍 [早期終了]除外フィルターはスキップされました（設定無効）")
+                
             return results, queries
         
         # Stage 2: 厳密検索（中精度） - タイトル検索が不十分な場合のみ
@@ -397,8 +427,15 @@ class CQLSearchEngine:
         results["combined_results"] = self._deduplicate_results(results["combined_results"])
         
         # 除外フィルター適用（正規表現による後処理）
+        logger.info(f"🔍 [段階的検索]除外フィルター設定確認: enable_exclusion_filter={self.enable_exclusion_filter}")
         if self.enable_exclusion_filter:
+            logger.info("🔍 [段階的検索]除外フィルターを実行します")
+            before_count = len(results["combined_results"])
             results["combined_results"] = self._filter_excluded_results(results["combined_results"])
+            after_count = len(results["combined_results"])
+            logger.info(f"🔍 [段階的検索]除外フィルター実行結果: {before_count}件 → {after_count}件")
+        else:
+            logger.info("🔍 [段階的検索]除外フィルターはスキップされました（設定無効）")
         
         final_count = len(results["combined_results"])
         logger.info(f"🎯 段階的検索完了: {final_count}件（タイトル{title_results_count}件 + 厳密{final_count-title_results_count}件）")
@@ -861,14 +898,23 @@ class CQLSearchEngine:
         if not results:
             return results
         
+        # デバッグ情報出力
+        logger.info(f"🔍 除外フィルター開始: {len(results)}件の結果を処理")
+        logger.info(f"🔍 enable_exclusion_filter: {getattr(self, 'enable_exclusion_filter', 'NOT_SET')}")
+        
         # UIからの除外フィルター設定を確認
         try:
             import streamlit as st
             if hasattr(st, 'session_state') and hasattr(st.session_state, 'include_deleted_pages'):
-                if st.session_state.include_deleted_pages:
+                include_deleted = st.session_state.include_deleted_pages
+                logger.info(f"🔍 UI設定 include_deleted_pages: {include_deleted}")
+                if include_deleted:
                     logger.info("🟢 UI設定: 削除ページを含む → 除外フィルターを無効化")
                     return results
-        except:
+            else:
+                logger.info("🔍 Streamlit session_state または include_deleted_pages が見つかりません")
+        except Exception as e:
+            logger.info(f"🔍 Streamlit環境チェック失敗: {e}")
             pass  # Streamlit環境外では無視
         
         import re
@@ -877,6 +923,8 @@ class CQLSearchEngine:
         all_keywords = []
         for category, keywords in self.exclusion_keywords.items():
             all_keywords.extend(keywords)
+        
+        logger.info(f"🔍 除外キーワード: {all_keywords}")
         
         if not all_keywords:
             logger.info("🗑️ 除外キーワードが設定されていません")
@@ -895,6 +943,7 @@ class CQLSearchEngine:
         combined_pattern = f'({bracket_pattern}|{percent_pattern})'
         
         logger.info(f"🗑️ 除外パターン構築完了: {len(all_keywords)}キーワード（正規表現使用）")
+        logger.info(f"🔍 使用する正規表現パターン: {combined_pattern}")
         
         # フィルタリング実行
         filtered_results = []
@@ -904,10 +953,12 @@ class CQLSearchEngine:
             title = result.get("title", "")
             
             # 正規表現マッチング
-            if re.search(combined_pattern, title, re.IGNORECASE):
+            match = re.search(combined_pattern, title, re.IGNORECASE)
+            if match:
                 excluded_count += 1
-                logger.debug(f"🗑️ 除外: {title}")
+                logger.info(f"🗑️ 除外: '{title}' (マッチ部分: '{match.group()}')")
             else:
+                logger.info(f"🔍 保持: '{title}'")
                 filtered_results.append(result)
         
         logger.info(f"🗑️ 除外フィルター完了: {excluded_count}件除外, {len(filtered_results)}件残存")
@@ -933,6 +984,49 @@ class CQLSearchEngine:
         summary_parts.append(f"主要: {primary_datasource.title()}")
         
         return " | ".join(summary_parts)
+    
+    def _get_enabled_datasources(self) -> List[str]:
+        """UIで選択されたデータソースを取得"""
+        
+        enabled_sources = []
+        
+        try:
+            import streamlit as st
+            if hasattr(st, 'session_state') and hasattr(st.session_state, 'data_sources'):
+                data_sources = st.session_state.data_sources
+                
+                if data_sources.get('confluence', True):
+                    enabled_sources.append('confluence')
+                if data_sources.get('jira', True):
+                    enabled_sources.append('jira')
+                    
+                logger.info(f"🖥️ UI データソース選択状況: Confluence={data_sources.get('confluence', True)}, Jira={data_sources.get('jira', True)}")
+            else:
+                # Streamlit環境外またはUIで未設定の場合はデフォルト
+                enabled_sources = ['confluence', 'jira']
+                logger.info("🖥️ UI データソース選択: デフォルト（全て有効）")
+                
+        except Exception as e:
+            # フォールバック
+            enabled_sources = ['confluence', 'jira']
+            logger.warning(f"🖥️ UI データソース選択取得失敗: {e}")
+            
+        return enabled_sources
+    
+    def _determine_final_datasources(self, step2_priority: List[str], ui_enabled: List[str]) -> List[str]:
+        """Step2の判定結果とUIの選択を組み合わせて最終的な検索対象を決定"""
+        
+        # Step2の判定結果を優先し、UIで有効なもののみ選択
+        # Step2で除外されたデータソース（確信度30%未満）は、UIで選択されていても追加しない
+        filtered_priority = [ds for ds in step2_priority if ds in ui_enabled]
+        
+        # 結果検証
+        if not filtered_priority:
+            logger.warning("⚠️ 検索対象データソースがありません - デフォルトでConfluenceを使用")
+            return ['confluence']
+        
+        logger.info(f"🔍 データソース決定ロジック: Step2選択={step2_priority}, UI有効={ui_enabled}, 最終結果={filtered_priority}")
+        return filtered_priority
     
     def _build_title_exclusion_conditions(self) -> List[str]:
         """CQL用タイトル除外条件構築（API効率化のため無効化）"""

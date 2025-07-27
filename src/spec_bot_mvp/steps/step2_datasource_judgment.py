@@ -115,8 +115,8 @@ class DataSourceJudge:
         # 3. Geminiによる検索用キーワード最適化（仕様書2.2.3）
         optimized_keywords = self._optimize_keywords_with_gemini(primary_keywords, selected_datasources)
         
-        # 4. データソース優先順序決定
-        datasource_priority = sorted(datasource_scores.keys(), key=lambda x: datasource_scores[x], reverse=True)
+        # 4. データソース優先順序決定（選択されたデータソースのみ）
+        datasource_priority = sorted(selected_datasources, key=lambda x: datasource_scores[x], reverse=True)
         
         # 5. 判定理由生成
         reasoning = self._generate_reasoning_spec_compliant(

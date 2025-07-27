@@ -504,6 +504,39 @@ class IntegratedThinkingProcessUI:
         st.write("**🔧 デバッグ: 受信データの構造**")
         st.write(f"Details keys: {list(details.keys())}")
         
+        # データソース選択状況の表示（Step2判定結果を反映）
+        try:
+            # Step2の判定結果から実際の検索対象を確認
+            actual_datasources = []
+            if 'execution_summary' in details and details['execution_summary']:
+                summary = details['execution_summary']
+                if 'Confluence:' in summary and not 'Confluence: 0件' in summary:
+                    actual_datasources.append('confluence')
+                if 'Jira:' in summary and not 'Jira: 0件' in summary:
+                    actual_datasources.append('jira')
+            
+            # UI設定も表示
+            ui_enabled = []
+            if hasattr(st, 'session_state') and hasattr(st.session_state, 'data_sources'):
+                data_sources = st.session_state.data_sources
+                if data_sources.get('confluence', True):
+                    ui_enabled.append('Confluence')
+                if data_sources.get('jira', True):
+                    ui_enabled.append('Jira')
+            
+            # 実際の検索結果に基づく表示
+            if len(actual_datasources) == 2:
+                st.info(f"🎯 **実際の検索**: Confluence + Jira（UI選択: {' + '.join(ui_enabled)}）")
+            elif 'confluence' in actual_datasources:
+                st.success(f"📚 **実際の検索**: Confluence のみ（UI選択: {' + '.join(ui_enabled)}）")
+            elif 'jira' in actual_datasources:
+                st.success(f"🎫 **実際の検索**: Jira のみ（UI選択: {' + '.join(ui_enabled)}）")
+            else:
+                st.caption("🎯 **データソース**: 状況確認中")
+                
+        except Exception as e:
+            st.caption(f"🎯 **データソース**: 状況確認中（{str(e)[:50]}）")
+        
         # 除外フィルター状況の表示
         try:
             if hasattr(st, 'session_state') and hasattr(st.session_state, 'include_deleted_pages'):
