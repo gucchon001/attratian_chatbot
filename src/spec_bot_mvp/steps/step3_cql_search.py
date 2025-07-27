@@ -807,22 +807,20 @@ class CQLSearchEngine:
         mock_results = []
         
         if is_login_related:
-            # ログイン機能関連の現実的なテストデータ
+            # ログイン関連クエリ用の動的データ生成
+            query_keywords = self._extract_mock_keywords_from_query(query)
+            login_context = self._determine_login_context(query_keywords, query_lower)
+            
             if datasource == "jira":
-                jira_samples = [
-                    {"id": "AUTH-101", "title": "ログイン画面のUI不具合修正", "type": "Bug", "status": "In Progress"},
-                    {"id": "AUTH-89", "title": "パスワードリセット機能の実装", "type": "Story", "status": "Done"},
-                    {"id": "SEC-45", "title": "二段階認証の導入検討", "type": "Epic", "status": "To Do"},
-                    {"id": "AUTH-156", "title": "セッション管理の改善", "type": "Task", "status": "In Progress"},
-                    {"id": "BUG-234", "title": "ログイン失敗時のエラーメッセージ改善", "type": "Bug", "status": "Review"}
-                ]
-                for i in range(min(mock_count, len(jira_samples))):
-                    sample = jira_samples[i]
+                # ログイン関連の動的Jiraタイトル生成
+                jira_templates = self._generate_login_jira_templates(login_context, query_keywords)
+                for i in range(mock_count):
+                    template_idx = i % len(jira_templates)
                     mock_results.append({
-                        "id": sample["id"],
-                        "title": f"{sample['title']} ({strategy['name']})",
-                        "type": sample["type"],
-                        "status": sample["status"],
+                        "id": f"AUTH-{100 + i}",
+                        "title": f"{jira_templates[template_idx]} ({strategy['name']})",
+                        "type": "Story" if i % 2 == 0 else "Bug",
+                        "status": ["Open", "In Progress", "Done"][i % 3],
                         "assignee": "dev.team@company.com",
                         "created": "2024-01-15",
                         "strategy": strategy["name"],
@@ -830,19 +828,14 @@ class CQLSearchEngine:
                         "datasource": "jira"
                     })
             else:  # confluence
-                confluence_samples = [
-                    {"id": "page_auth_001", "title": "ログイン機能設計書", "space": "SYSTEM"},
-                    {"id": "page_auth_002", "title": "認証フロー仕様書", "space": "API"},
-                    {"id": "page_auth_003", "title": "ユーザー管理システム要件定義", "space": "SYSTEM"},
-                    {"id": "page_auth_004", "title": "セキュリティポリシー - 認証編", "space": "SECURITY"},
-                    {"id": "page_auth_005", "title": "ログイン画面UI設計ガイドライン", "space": "DESIGN"}
-                ]
-                for i in range(min(mock_count, len(confluence_samples))):
-                    sample = confluence_samples[i]
+                # ログイン関連の動的Confluenceタイトル生成
+                confluence_templates = self._generate_login_confluence_templates(login_context, query_keywords)
+                for i in range(mock_count):
+                    template_idx = i % len(confluence_templates)
                     mock_results.append({
-                        "id": sample["id"],
-                        "title": f"{sample['title']} ({strategy['name']})",
-                        "space": sample["space"],
+                        "id": f"page_auth_{100 + i}",
+                        "title": f"{confluence_templates[template_idx]} ({strategy['name']})",
+                        "space": ["SYSTEM", "API", "SECURITY"][i % 3],
                         "type": "page",
                         "created": "2024-01-10",
                         "strategy": strategy["name"],
@@ -852,7 +845,7 @@ class CQLSearchEngine:
         else:
             # その他のクエリ用の関連性のあるテストデータ
             query_keywords = self._extract_mock_keywords_from_query(query)
-            base_keyword = query_keywords[0] if query_keywords else "システム"
+            base_keyword = self._determine_base_keyword_from_query(query_keywords, query)
             
             # 「機能」重複を回避するため、末尾の「機能」を除去
             base_keyword_clean = base_keyword.replace("機能", "") if base_keyword.endswith("機能") else base_keyword
@@ -908,8 +901,9 @@ class CQLSearchEngine:
         # クエリからキーワードを抽出
         query_clean = query.replace('"', '').replace("'", "").replace("(", "").replace(")", "")
         
-        # 除外する汎用語
-        exclude_terms = ["AND", "OR", "space", "title", "text", "=", "~", "CLIENTTOMO"]
+        # 除外する汎用語（設定から動的に取得）
+        config_exclusions = getattr(self.settings, 'mock_exclude_terms', [])
+        exclude_terms = ["AND", "OR", "space", "title", "text", "=", "~"] + config_exclusions
         
         # キーワード候補を抽出
         candidates = []
@@ -936,6 +930,159 @@ class CQLSearchEngine:
         
         # 最大3個のキーワードを返す
         return unique_keywords[:3] if unique_keywords else ["機能"]
+    
+    def _determine_login_context(self, keywords: List[str], query_lower: str) -> str:
+        """ログイン関連クエリの文脈判定"""
+        
+        # 文脈キーワード判定
+        if any(word in query_lower for word in ["画面", "ui", "フロント"]):
+            return "ui"
+        elif any(word in query_lower for word in ["api", "バックエンド", "サーバー"]):
+            return "api"
+        elif any(word in query_lower for word in ["セキュリティ", "認証", "暗号化"]):
+            return "security"
+        elif any(word in query_lower for word in ["仕様", "設計", "詳細"]):
+            return "spec"
+        elif any(word in query_lower for word in ["バグ", "不具合", "エラー"]):
+            return "bug"
+        elif any(word in query_lower for word in ["テスト", "検証"]):
+            return "test"
+        else:
+            return "general"
+    
+    def _generate_login_jira_templates(self, context: str, keywords: List[str]) -> List[str]:
+        """ログイン関連の動的Jiraタイトル生成"""
+        
+        # キーワードベースの動的生成
+        main_keyword = keywords[0] if keywords else "ログイン"
+        
+        if context == "ui":
+            return [
+                f"{main_keyword}画面の表示改善",
+                f"{main_keyword}UIの不具合修正",
+                f"{main_keyword}フォームの操作性向上",
+                f"{main_keyword}レスポンシブ対応"
+            ]
+        elif context == "api":
+            return [
+                f"{main_keyword}APIの実装",
+                f"{main_keyword}エンドポイント設計",
+                f"{main_keyword}トークン管理機能",
+                f"{main_keyword}API仕様変更"
+            ]
+        elif context == "security":
+            return [
+                f"{main_keyword}セキュリティ強化",
+                f"{main_keyword}二段階認証対応",
+                f"{main_keyword}暗号化方式変更",
+                f"{main_keyword}脆弱性対応"
+            ]
+        elif context == "bug":
+            return [
+                f"{main_keyword}エラー修正",
+                f"{main_keyword}失敗時の不具合",
+                f"{main_keyword}タイムアウト問題",
+                f"{main_keyword}例外処理改善"
+            ]
+        elif context == "test":
+            return [
+                f"{main_keyword}機能のテスト",
+                f"{main_keyword}テストケース追加",
+                f"{main_keyword}自動テスト導入",
+                f"{main_keyword}性能テスト"
+            ]
+        else:  # general
+            return [
+                f"{main_keyword}機能の実装",
+                f"{main_keyword}に関する課題",
+                f"{main_keyword}機能改善",
+                f"{main_keyword}要件変更"
+            ]
+    
+    def _generate_login_confluence_templates(self, context: str, keywords: List[str]) -> List[str]:
+        """ログイン関連の動的Confluenceタイトル生成"""
+        
+        # キーワードベースの動的生成
+        main_keyword = keywords[0] if keywords else "ログイン"
+        
+        if context == "ui":
+            return [
+                f"{main_keyword}画面設計書",
+                f"{main_keyword}UI仕様書", 
+                f"{main_keyword}画面遷移図",
+                f"{main_keyword}ワイヤーフレーム"
+            ]
+        elif context == "api":
+            return [
+                f"{main_keyword}API仕様書",
+                f"{main_keyword}エンドポイント設計",
+                f"{main_keyword}インターフェース定義",
+                f"{main_keyword}APIドキュメント"
+            ]
+        elif context == "security":
+            return [
+                f"{main_keyword}セキュリティポリシー",
+                f"{main_keyword}認証設計書",
+                f"{main_keyword}暗号化仕様",
+                f"{main_keyword}セキュリティガイドライン"
+            ]
+        elif context == "spec":
+            return [
+                f"{main_keyword}機能仕様書",
+                f"{main_keyword}詳細設計書",
+                f"{main_keyword}要件定義書",
+                f"{main_keyword}機能概要"
+            ]
+        elif context == "test":
+            return [
+                f"{main_keyword}テスト仕様書",
+                f"{main_keyword}テストケース",
+                f"{main_keyword}検証手順書",
+                f"{main_keyword}テスト計画"
+            ]
+        else:  # general
+            return [
+                f"{main_keyword}機能設計書",
+                f"{main_keyword}に関する仕様",
+                f"{main_keyword}システム概要",
+                f"{main_keyword}機能説明"
+            ]
+    
+    def _determine_base_keyword_from_query(self, keywords: List[str], original_query: str) -> str:
+        """クエリから適切なベースキーワードを動的に決定"""
+        
+        # 優先順位付きキーワード選択
+        if keywords:
+            # 最も具体的なキーワードを選択
+            primary_keyword = keywords[0]
+            
+            # 汎用語の場合は、より具体的なキーワードがないか確認
+            if primary_keyword in self.stop_words and len(keywords) > 1:
+                for kw in keywords[1:]:
+                    if kw not in self.stop_words:
+                        return kw
+            
+            return primary_keyword
+        
+        # キーワードが抽出できない場合、クエリから文脈推測
+        query_lower = original_query.lower()
+        
+        # ドメイン別フォールバック
+        if any(word in query_lower for word in ["ユーザー", "user", "利用者"]):
+            return "ユーザー"
+        elif any(word in query_lower for word in ["データ", "db", "database"]):
+            return "データ"
+        elif any(word in query_lower for word in ["api", "interface", "通信"]):
+            return "API"
+        elif any(word in query_lower for word in ["画面", "ui", "表示"]):
+            return "画面"
+        elif any(word in query_lower for word in ["処理", "process", "実行"]):
+            return "処理"
+        elif any(word in query_lower for word in ["設定", "config", "環境"]):
+            return "設定"
+        else:
+            # 最終フォールバック
+            return "アプリケーション"
     
     def _deduplicate_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """結果重複除去"""
