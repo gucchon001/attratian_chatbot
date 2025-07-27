@@ -81,6 +81,37 @@ def render_sidebar():
     with st.sidebar:
         st.markdown("## 📊 検索対象データソース")
         
+        # 🗑️ コンテンツフィルター（新規追加）
+        st.markdown("### 🗑️ コンテンツフィルター")
+        
+        # 削除ページを含むチェックボックス
+        include_deleted = st.checkbox(
+            "削除ページを含む",
+            value=False,
+            help="【削除】【廃止】などのマークが付いたページも検索結果に含める",
+            key="include_deleted_pages"
+        )
+        
+        # 除外フィルター状況の可視化
+        if include_deleted:
+            st.success("🟢 除外フィルター: 無効（すべてのページを表示）")
+        else:
+            st.info("🔴 除外フィルター: 有効（削除・廃止ページを除外）")
+            with st.expander("🔍 除外対象パターン", expanded=False):
+                st.caption("以下のパターンを含むタイトルを除外:")
+                st.markdown("""
+                - 【削除】【削除予定】【削除済み】
+                - 【廃止】【廃止予定】【システム廃止】  
+                - 【終了】【停止】【無効】【利用停止】
+                - 【非推奨】【deprecated】【obsolete】
+                - 【テスト用】【一時的】【暫定】
+                - %%削除%% %%廃止%% などの%記号
+                """)
+        
+        # Note: ウィジェットにkeyが設定されているため、自動的にst.session_state.include_deleted_pagesに保存される
+        
+        st.divider()
+        
         # フィルターオプション初期化
         if 'filter_options' not in st.session_state:
             st.session_state.filter_options = {
@@ -231,9 +262,9 @@ def render_sidebar():
                     key='filter_confluence_created_before'
                 )
                 st.session_state.filters['confluence_created_before'] = confluence_created_before.strftime('%Y-%m-%d') if confluence_created_before else None
-        
-        st.divider()
-        
+            
+            st.divider()
+            
         # HierarchyFilterUIが利用可能な場合は統合フィルターを表示（下部に移動）
         if SPEC_BOT_AVAILABLE and "filter_ui" in st.session_state:
             try:
@@ -244,7 +275,7 @@ def render_sidebar():
             except Exception as e:
                 logger.error(f"階層フィルターUI描画エラー: {e}")
                 st.error(f"フィルターUIの描画中にエラー: {e}")
-        
+                
         # フィルター操作ボタン
         if st.button("🗑️ フィルターをクリア", use_container_width=True):
             # フィルターのクリア処理
@@ -254,7 +285,7 @@ def render_sidebar():
             if 'filters' in st.session_state:
                 st.session_state.filters.clear()
             st.rerun()
-
+        
 
 def display_saved_thinking_process(thinking_data: Dict):
     """過去の思考プロセス表示"""
@@ -302,7 +333,7 @@ def main():
         if "thinking_ui" in st.session_state:
             st.session_state.thinking_ui = IntegratedThinkingProcessUI()
         st.rerun()
-    
+
     # 会話履歴表示
     for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
@@ -328,7 +359,7 @@ def main():
         with st.chat_message("assistant"):
             thinking_ui = st.session_state.thinking_ui
             process_placeholder = st.empty()
-
+            
             try:
                 # 検索実行（プロセス可視化はexecute_integrated_search_with_progress内で処理）
                 result = execute_integrated_search_with_progress(prompt, thinking_ui, process_placeholder)
@@ -336,17 +367,17 @@ def main():
                 # 検索完了後も思考プロセスを表示し続ける（クリアしない）
                 with process_placeholder.container():
                     thinking_ui.render_process_visualization()
-
+                
                 # 検索結果を表示
                 st.markdown(result["search_result"])
-                
+        
                 # メッセージ履歴に追加
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": result["search_result"],
                     "thinking_process": result["thinking_process"]
                 })
-
+        
             except Exception as e:
                 logger.error(f"検索実行中にエラーが発生: {e}")
                 # エラー時も思考プロセスを表示

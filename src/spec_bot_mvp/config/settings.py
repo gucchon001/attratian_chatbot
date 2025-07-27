@@ -112,4 +112,34 @@ class Settings:
     
     def validate_gemini_config(self) -> bool:
         """Gemini設定の検証"""
-        return bool(self.gemini_api_key.strip()) 
+        return bool(self.gemini_api_key.strip())
+    
+    # 除外フィルター設定（【】内キーワード含有検索）
+    @property
+    def enable_exclusion_filter(self) -> bool:
+        """除外フィルターを有効にするかどうか"""
+        return self._config.getboolean('exclusion_filters', 'enable_exclusion_filter', fallback=True)
+    
+    @property
+    def bracket_exclusion_keywords(self) -> list:
+        """【】内に含まれる場合に除外するキーワードリスト"""
+        keywords_str = self._config.get('exclusion_filters', 'bracket_exclusion_keywords', fallback='削除,廃止,終了,停止,無効,利用停止')
+        return [keyword.strip() for keyword in keywords_str.split(',') if keyword.strip()]
+    
+    @property
+    def percent_exclusion_keywords(self) -> list:
+        """%%内に含まれる場合に除外するキーワードリスト"""
+        keywords_str = self._config.get('exclusion_filters', 'percent_exclusion_keywords', fallback='削除,廃止,終了')
+        return [keyword.strip() for keyword in keywords_str.split(',') if keyword.strip()]
+    
+    @property
+    def english_exclusion_keywords(self) -> list:
+        """英語の廃止・非推奨キーワードリスト（【】内検索用）"""
+        keywords_str = self._config.get('exclusion_filters', 'english_exclusion_keywords', fallback='deprecated,obsolete,retired,archived')
+        return [keyword.strip() for keyword in keywords_str.split(',') if keyword.strip()]
+    
+    @property
+    def temporary_exclusion_keywords(self) -> list:
+        """テスト・一時的キーワードリスト（【】内検索用）"""
+        keywords_str = self._config.get('exclusion_filters', 'temporary_exclusion_keywords', fallback='テスト用,一時的,暫定,予定')
+        return [keyword.strip() for keyword in keywords_str.split(',') if keyword.strip()] 

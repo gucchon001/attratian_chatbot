@@ -52,17 +52,21 @@ class IntegratedThinkingProcessUI:
                     if "result_count" in details:
                         st.metric("取得結果数", f"{details['result_count']}件")
                     
-                    # 検索クエリ表示
-                    if "search_query" in details:
-                        st.code(details["search_query"], language="sql")
-                    
-                    # その他詳細情報
-                    for key, value in details.items():
-                        if key not in ["execution_time", "result_count", "search_query"]:
-                            if isinstance(value, dict):
-                                st.json(value)
-                            else:
-                                st.write(f"**{key}:** {value}")
+                    # CQL検索実行段階の詳細表示
+                    if stage["id"] == "search_execution":
+                        self._render_cql_search_details(details)
+                    else:
+                        # 検索クエリ表示
+                        if "search_query" in details:
+                            st.code(details["search_query"], language="sql")
+                        
+                        # その他詳細情報
+                        for key, value in details.items():
+                            if key not in ["execution_time", "result_count", "search_query"]:
+                                if isinstance(value, dict):
+                                    st.json(value)
+                                else:
+                                    st.write(f"**{key}:** {value}")
                                 
         elif status == "in_progress":
             with st.expander(f"🔄 {name} - 実行中...", expanded=True):
@@ -111,14 +115,14 @@ class IntegratedThinkingProcessUI:
                 st.markdown("## 🧠 思考プロセス完了")
                 st.caption("AI検索エンジンによる5段階の処理が完了しました")
             with col2:
-                st.metric("", "✅ 完了", delta="5/5段階")
+                st.metric("処理状況", "✅ 完了", delta="5/5段階")
         elif in_progress_stages > 0:
             col1, col2 = st.columns([3, 1])
             with col1:
                 st.markdown("## 🧠 思考プロセス実行中")
                 st.caption("AI検索エンジンが段階的に処理を実行しています")
             with col2:
-                st.metric("", f"🔄 実行中", delta=f"{completed_stages}/{total_stages}段階")
+                st.metric("処理状況", f"🔄 実行中", delta=f"{completed_stages}/{total_stages}段階")
         else:
             st.markdown("## 🧠 思考プロセス")
         
@@ -290,21 +294,25 @@ class IntegratedThinkingProcessUI:
                     st.metric("🎯 検索戦略", intent)
                 
         elif stage_id == "search_execution":
-            # 検索段階：実行戦略と結果詳細
+            # 検索段階：CQL詳細表示を優先
+            st.markdown("### ⚡ 検索実行ストラテジー")
+            
+            # CQL検索の詳細表示を呼び出し
+            self._render_cql_search_details(details)
+            
+            # 従来の表示も残す（補完用）
             all_results = details.get("all_results", [])
             total = details.get("total_results", len(all_results))
             execution_summary = details.get("execution_summary", "")
             
-            st.markdown("### ⚡ 検索実行ストラテジー")
-            
-            # 実行サマリー
-            if execution_summary:
+                        # 実行サマリー（CQL詳細に含まれていない場合のバックアップ）
+            if execution_summary and "execution_summary" not in details:
                 st.markdown("#### 📊 実行戦略")
                 st.success(execution_summary)
             
-            # 結果統計の視覚化
-            st.markdown("#### 📈 検索結果統計")
-            if total > 0:
+            # 結果統計の視覚化（CQL詳細に含まれていない場合のバックアップ）
+            if total > 0 and "search_results" not in details:
+                st.markdown("#### 📈 検索結果統計")
                 conf_count = len([r for r in all_results if r.get("datasource") == "confluence"])
                 jira_count = len([r for r in all_results if r.get("datasource") == "jira"])
                 
@@ -325,7 +333,7 @@ class IntegratedThinkingProcessUI:
                     st.markdown("#### 🔍 実行された検索戦略")
                     for i, strategy in enumerate(strategies, 1):
                         st.markdown(f"{i}. **{strategy}**")
-            else:
+            elif total == 0:
                 st.warning("⚠️ 検索結果が見つかりませんでした")
                 
         elif stage_id == "result_integration":
@@ -488,3 +496,104 @@ class IntegratedThinkingProcessUI:
         **⭐ 品質保証:** 最高品質スコア{max_quality:.3f}で信頼性の高い情報を提供
         """
         st.success(summary_text)
+
+    def _render_cql_search_details(self, details: Dict) -> None:
+        """CQL検索実行段階の詳細表示"""
+        
+        # デバッグ用：受信データの構造を表示
+        st.write("**🔧 デバッグ: 受信データの構造**")
+        st.write(f"Details keys: {list(details.keys())}")
+        
+        # 除外フィルター状況の表示
+        try:
+            if hasattr(st, 'session_state') and hasattr(st.session_state, 'include_deleted_pages'):
+                if st.session_state.include_deleted_pages:
+                    st.success("🟢 **除外フィルター**: 無効（削除ページを含む）")
+                else:
+                    st.info("🔴 **除外フィルター**: 有効（削除・廃止ページを除外中）")
+            else:
+                st.caption("📋 **除外フィルター**: デフォルト設定")
+        except:
+            st.caption("📋 **除外フィルター**: 状況確認中")
+        
+        st.divider()
+        
+        # 実行サマリー表示
+        if "execution_summary" in details:
+            st.write(f"**📊 実行サマリー:** {details['execution_summary']}")
+            st.divider()
+        
+        # 総結果数表示
+        if "total_results" in details:
+            st.metric("🎯 総取得結果数", f"{details['total_results']}件")
+        
+        # 実行戦略表示
+        if "strategies_executed" in details:
+            strategies = details["strategies_executed"]
+            st.write(f"**⚡ 実行戦略:** {', '.join(strategies)}")
+            st.divider()
+        
+        # クエリ詳細表示（データソース別）- デバッグ強化版
+        if "query_details" in details:
+            query_details = details["query_details"]
+            st.write(f"**🔧 デバッグ: query_details structure:** {query_details}")
+            
+            for datasource, queries in query_details.items():
+                st.subheader(f"🔍 {datasource.upper()} クエリ詳細")
+                
+                for strategy_id, query_info in queries.items():
+                    strategy_name = query_info.get("strategy", strategy_id)
+                    query_text = query_info.get("query", "")
+                    keywords = query_info.get("keywords", [])
+                    
+                    # デフォルトで展開されたExpanderで表示
+                    with st.expander(f"📋 {strategy_name} ({strategy_id})", expanded=True):
+                        # キーワード表示
+                        if keywords:
+                            st.write(f"**🔑 使用キーワード:** {', '.join(keywords)}")
+                        
+                        # クエリ表示
+                        if query_text:
+                            query_language = "sql" if datasource == "jira" else "sql"  # JQL/CQL両方SQL扱い
+                            st.code(query_text, language=query_language)
+                        else:
+                            st.write("⚠️ クエリ情報なし")
+                            st.write(f"**🔧 デバッグ: query_info structure:** {query_info}")
+                
+                st.divider()
+        else:
+            # query_detailsがない場合のデバッグ表示
+            st.warning("⚠️ query_details が見つかりません")
+            st.write("**📋 利用可能なキー:**", list(details.keys()))
+            
+            # 実行された検索戦略を代替表示
+            if "strategies_executed" in details:
+                strategies = details["strategies_executed"]
+                st.markdown("#### 🔍 実行された検索戦略")
+                for i, strategy in enumerate(strategies, 1):
+                    st.markdown(f"{i}. **{strategy}**")
+        
+        # 検索結果統計表示
+        if "search_results" in details:
+            search_results = details["search_results"]
+            st.subheader("📈 検索結果統計")
+            
+            for datasource, results in search_results.items():
+                combined_count = len(results.get("combined_results", []))
+                strategy_results = results.get("strategy_results", {})
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric(f"{datasource.upper()}", f"{combined_count}件")
+                
+                with col2:
+                    if strategy_results:
+                        strategy_breakdown = []
+                        for strategy_id, strategy_res in strategy_results.items():
+                            count = len(strategy_res) if isinstance(strategy_res, list) else 0
+                            strategy_breakdown.append(f"{strategy_id}: {count}件")
+                        st.write("内訳: " + " / ".join(strategy_breakdown))
+        
+        # 詳細JSONデータ（常に表示でデバッグ用）
+        st.subheader("🔧 完全デバッグ情報")
+        st.json(details)

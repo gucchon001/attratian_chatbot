@@ -264,7 +264,9 @@ class QualityEvaluator:
         score += keyword_density * self.relevance_criteria["keyword_density_weight"]
         
         # 検索戦略によるボーナス
-        if result_strategy == "厳密検索":
+        if result_strategy == "タイトル検索":
+            score += 0.4  # タイトル検索結果は最高関連性
+        elif result_strategy == "厳密検索":
             score += 0.2  # 厳密検索結果はより関連性が高い
         elif result_strategy == "緩和検索":
             score += 0.1
