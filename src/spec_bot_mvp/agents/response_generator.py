@@ -158,9 +158,6 @@ class ResponseGenerationAgent:
 📄 **[ページタイトル]**
 🔗 [完全なURL]
 
-## 🎯 さらなる深掘り・関連情報
-[ユーザーが次に知りたそうなCLIENTTOMO関連キーワード・質問を提案]
-
 ---
 
 【重要指針】
@@ -323,37 +320,26 @@ class ResponseGenerationAgent:
         # 基本的な深掘り提案（動的キーワードベース）
         primary_keyword = query_keywords[0] if query_keywords else None
         
-        if primary_keyword == "ログイン":
+        # 汎用的な提案生成（固定パターンを廃止）
+        if primary_keyword:
             suggestions.extend([
-                f"{primary_keyword}機能の会員機能について知りたい",
-                f"{primary_keyword}認証のセキュリティ仕様を確認したい",
-                f"{primary_keyword}後の画面遷移フローを見たい"
+                f"{primary_keyword}の技術仕様を詳しく知りたい",
+                f"{primary_keyword}の運用手順を確認したい",
+                f"{primary_keyword}との連携方法を見たい"
             ])
-        elif primary_keyword == "API":
-            suggestions.extend([
-                f"{primary_keyword}認証方式の詳細仕様について知りたい",
-                f"{primary_keyword}エラーハンドリングの実装方法を確認したい",
-                f"{primary_keyword}利用制限・レート制限について確認したい"
-            ])
-        elif "UI" in query_keywords or "画面" in query_keywords:
-            suggestions.extend([
-                "UI設計ガイドラインについて知りたい",
-                "画面遷移の全体フローを確認したい",
-                "レスポンシブ対応の実装仕様を見たい"
-            ])
-        elif primary_keyword in ["急募", "設計", "認証", "管理", "データベース"]:
-            suggestions.extend([
-                f"{primary_keyword}機能の技術仕様を詳しく知りたい",
-                f"{primary_keyword}システムの運用手順を確認したい",
-                f"{primary_keyword}関連の連携方法を見たい"
-            ])
-        else:
-            # 汎用的な提案
-            suggestions.extend([
-                f"{primary_keyword or '関連機能'}の技術仕様を詳しく知りたい",
-                f"{primary_keyword or '該当機能'}の運用手順を確認したい",
-                f"{primary_keyword or '関連システム'}との連携方法を見たい"
-            ])
+        
+        # 検索結果から動的に関連キーワードを抽出して提案
+        if result_keywords and len(result_keywords) > 1:
+            secondary_keyword = result_keywords[1] if result_keywords[1] != primary_keyword else result_keywords[0]
+            suggestions.append(f"{secondary_keyword}について詳しく知りたい")
+        
+        # ユーザータイプ別の提案（検索結果から推測）
+        if any("会員" in str(result) for result in search_results):
+            suggestions.append("会員向け機能の詳細仕様を確認したい")
+        if any("企業" in str(result) for result in search_results):
+            suggestions.append("クライアント企業向け機能を確認したい")
+        if any("管理者" in str(result) for result in search_results):
+            suggestions.append("管理者向け機能の設定方法を見たい")
         
         if not suggestions:
             return ""
