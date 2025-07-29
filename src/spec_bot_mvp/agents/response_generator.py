@@ -273,31 +273,39 @@ class ResponseGenerationAgent:
         # 関連提案を生成
         suggestions = []
         
-        # 基本的な深掘り提案
-        if "ログイン" in user_query:
+        # 基本的な深掘り提案（動的キーワードベース）
+        primary_keyword = query_keywords[0] if query_keywords else None
+        
+        if primary_keyword == "ログイン":
             suggestions.extend([
-                "ログイン機能の会員機能について知りたい",
-                "ログイン認証のセキュリティ仕様を確認したい",
-                "ログイン後の画面遷移フローを見たい"
+                f"{primary_keyword}機能の会員機能について知りたい",
+                f"{primary_keyword}認証のセキュリティ仕様を確認したい",
+                f"{primary_keyword}後の画面遷移フローを見たい"
             ])
-        elif "API" in user_query:
+        elif primary_keyword == "API":
             suggestions.extend([
-                "API認証方式の詳細仕様について知りたい",
-                "APIエラーハンドリングの実装方法を確認したい",
-                "API利用制限・レート制限について確認したい"
+                f"{primary_keyword}認証方式の詳細仕様について知りたい",
+                f"{primary_keyword}エラーハンドリングの実装方法を確認したい",
+                f"{primary_keyword}利用制限・レート制限について確認したい"
             ])
-        elif "UI" in user_query or "画面" in user_query:
+        elif "UI" in query_keywords or "画面" in query_keywords:
             suggestions.extend([
                 "UI設計ガイドラインについて知りたい",
                 "画面遷移の全体フローを確認したい",
                 "レスポンシブ対応の実装仕様を見たい"
             ])
+        elif primary_keyword in ["急募", "設計", "認証", "管理", "データベース"]:
+            suggestions.extend([
+                f"{primary_keyword}機能の技術仕様を詳しく知りたい",
+                f"{primary_keyword}システムの運用手順を確認したい",
+                f"{primary_keyword}関連の連携方法を見たい"
+            ])
         else:
             # 汎用的な提案
             suggestions.extend([
-                f"{query_keywords[0] if query_keywords else '関連機能'}の技術仕様を詳しく知りたい",
-                f"{query_keywords[0] if query_keywords else '該当機能'}の運用手順を確認したい",
-                f"{query_keywords[0] if query_keywords else '関連システム'}との連携方法を見たい"
+                f"{primary_keyword or '関連機能'}の技術仕様を詳しく知りたい",
+                f"{primary_keyword or '該当機能'}の運用手順を確認したい",
+                f"{primary_keyword or '関連システム'}との連携方法を見たい"
             ])
         
         if not suggestions:
@@ -310,15 +318,36 @@ class ResponseGenerationAgent:
         return "\n".join(lines)
     
     def _extract_query_keywords(self, user_query: str) -> List[str]:
-        """ユーザー質問からキーワードを抽出"""
+        """ユーザー質問からキーワードを抽出（動的抽出版）"""
         keywords = []
-        common_keywords = ["ログイン", "認証", "API", "UI", "画面", "機能", "仕様", "設計", "実装"]
         
-        for keyword in common_keywords:
-            if keyword in user_query:
+        # 重要キーワードパターンを動的に検出
+        import re
+        
+        # 具体的な技術・機能キーワードを抽出
+        technical_patterns = [
+            r'[ァ-ヶー一-龯]+機能',  # XX機能
+            r'[ァ-ヶー一-龯]+設計',  # XX設計
+            r'[ァ-ヶー一-龯]+管理',  # XX管理
+            r'[ァ-ヶー一-龯]+認証',  # XX認証
+            r'API[ァ-ヶー一-龯]*',   # API関連
+            r'UI[ァ-ヶー一-龯]*',    # UI関連
+            r'データベース[ァ-ヶー一-龯]*'  # DB関連
+        ]
+        
+        for pattern in technical_patterns:
+            matches = re.findall(pattern, user_query)
+            keywords.extend(matches)
+        
+        # 基本的な機能キーワード
+        basic_keywords = ["認証", "画面", "仕様", "設計", "実装", "機能", "システム"]
+        for keyword in basic_keywords:
+            if keyword in user_query and keyword not in keywords:
                 keywords.append(keyword)
         
-        return keywords
+        # 重複除去と最大5個制限
+        unique_keywords = list(dict.fromkeys(keywords))
+        return unique_keywords[:5]
     
     def _extract_result_keywords(self, search_results: List[Dict]) -> List[str]:
         """検索結果からキーワードを抽出"""

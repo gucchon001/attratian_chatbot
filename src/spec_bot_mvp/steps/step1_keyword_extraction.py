@@ -228,21 +228,53 @@ class KeywordExtractor:
         # 重複除去・重要度順ソート
         unique_keywords = list(dict.fromkeys(keywords))
         
-        # CLIENTTOMO重要度順でソート
-        priority_order = ["ログイン", "会員", "クライアント企業", "管理者", "API", "UI", "データベース"]
-        sorted_keywords = []
-        
-        for priority_word in priority_order:
-            for keyword in unique_keywords:
-                if priority_word in keyword and keyword not in sorted_keywords:
-                    sorted_keywords.append(keyword)
-        
-        # 残りのキーワード追加
-        for keyword in unique_keywords:
-            if keyword not in sorted_keywords:
-                sorted_keywords.append(keyword)
+        # CLIENTTOMO重要度順でソート（動的計算版）
+        sorted_keywords = self._sort_keywords_by_relevance(unique_keywords, query)
         
         return sorted_keywords
+    
+    def _sort_keywords_by_relevance(self, keywords: List[str], query: str) -> List[str]:
+        """キーワードを関連性・重要度順にソート（動的計算）"""
+        if not keywords:
+            return []
+        
+        # キーワード別スコア計算
+        keyword_scores = []
+        
+        for keyword in keywords:
+            score = 0
+            
+            # 1. クエリ内での位置重み（前方ほど重要）
+            position = query.find(keyword)
+            if position >= 0:
+                position_weight = 1.0 - (position / len(query)) * 0.3  # 最大30%減
+                score += position_weight
+            
+            # 2. ドメイン重要度
+            for domain, domain_keywords in self.clienttomo_keywords.items():
+                if keyword in domain_keywords:
+                    # 認証系、企業系を高重要度に
+                    if domain in ["認証系", "企業系"]:
+                        score += 0.8
+                    elif domain in ["UI系", "データ系"]:
+                        score += 0.6
+                    else:
+                        score += 0.4
+                    break
+            
+            # 3. 複合語ボーナス
+            if keyword in self.compound_rules:
+                score += 0.5
+            
+            # 4. 文字数重み（長いほど具体的）
+            length_bonus = min(len(keyword) * 0.1, 0.5)
+            score += length_bonus
+            
+            keyword_scores.append((keyword, score))
+        
+        # スコア順でソート
+        keyword_scores.sort(key=lambda x: x[1], reverse=True)
+        return [keyword for keyword, score in keyword_scores]
     
     def _expand_compound_words(self, keywords: List[str], query: str) -> List[str]:
         """複合語分解による拡張"""
