@@ -267,7 +267,6 @@ class IntegratedThinkingProcessUI:
                 # session_stateからも取得を試行
                 if not user_query or user_query == "ユーザー質問":
                     try:
-                        import streamlit as st
                         # 最新のメッセージから取得
                         if hasattr(st.session_state, 'messages') and st.session_state.messages:
                             last_user_message = None
@@ -282,8 +281,9 @@ class IntegratedThinkingProcessUI:
                         if not user_query or user_query == "ユーザー質問":
                             user_query = getattr(st.session_state, 'current_user_query', None) or \
                                         getattr(st.session_state, 'last_query', None)
-                    except:
-                        pass
+                    except Exception as e:
+                        # session_state取得失敗時のログ
+                        print(f"session_state取得エラー: {e}")
                 
                 # 最終的なフォールバック：キーワードから推測
                 if not user_query or user_query == "ユーザー質問":
