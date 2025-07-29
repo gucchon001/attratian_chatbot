@@ -198,8 +198,23 @@ class ResponseGenerationAgent:
             enhanced_response = self._enhance_response_with_sources(response, enhanced_results, user_query)
             
             # Step 7: コンテンツ強化の統計情報を追加
+            confluence_enhanced = sum(1 for result in enhanced_results 
+                                    if result.get('content_enhanced', False) and 
+                                    (result.get('datasource') == 'confluence' or result.get('source') == 'confluence'))
+            jira_enhanced = enhanced_count - confluence_enhanced
+            
             if enhanced_count > 0:
-                stats_info = f"\n\n---\n**コンテンツ取得状況**: {enhanced_count}/{len(search_results)}件で詳細ページ情報を取得し、より包括的な回答を提供"
+                stats_parts = []
+                if confluence_enhanced > 0:
+                    stats_parts.append(f"Confluence: {confluence_enhanced}件（無制限全文取得）")
+                if jira_enhanced > 0:
+                    stats_parts.append(f"Jira: {jira_enhanced}件（詳細取得）")
+                    
+                stats_detail = " | ".join(stats_parts)
+                stats_info = f"\n\n---\n**📄 コンテンツ取得状況**: {enhanced_count}/{len(search_results)}件で詳細ページ情報を取得\n**🔍 取得詳細**: {stats_detail}\n**💡 効果**: より包括的で詳細な回答を提供"
+                enhanced_response += stats_info
+            else:
+                stats_info = f"\n\n---\n**📄 コンテンツ取得状況**: 既存の要約データを使用（{len(search_results)}件）"
                 enhanced_response += stats_info
             
             logger.info("✅ 回答生成完了: 文字数=%d, 強化件数=%d", len(enhanced_response), enhanced_count)
@@ -504,7 +519,9 @@ class ResponseGenerationAgent:
 
     def _enhance_content_with_full_fetch(self, search_results: List[Dict]) -> List[Dict]:
         """
-        検索結果の短い抜粋を実際のページ全文で補強
+        検索結果のコンテンツを全文取得で強化
+        
+        300文字制限を撤廃し、Confluenceデータを無制限に取得
         
         Args:
             search_results: 検索結果リスト
@@ -517,16 +534,29 @@ class ResponseGenerationAgent:
         for result in search_results:
             enhanced_result = result.copy()
             
-            # excerptが短すぎる場合、実際のページ全文を取得を試行
+            # 現在のコンテンツを確認
             current_content = result.get('content') or result.get('excerpt', '')
             
-            if current_content and len(current_content) < 300:
-                # 全文取得を試行
+            # Confluenceページの場合は常に全文取得を試行（無制限）
+            if result.get('datasource') == 'confluence' or result.get('source') == 'confluence':
+                logger.info(f"🔄 Confluence全文取得開始: {result.get('title', 'Unknown')}")
                 full_content = self._fetch_full_page_content(result)
                 if full_content and len(full_content) > len(current_content):
                     enhanced_result['content'] = full_content
                     enhanced_result['content_enhanced'] = True
-                    logger.info(f"✅ 全文取得成功: {result.get('title', 'Unknown')} ({len(current_content)}→{len(full_content)}文字)")
+                    logger.info(f"✅ Confluence全文取得成功: {result.get('title', 'Unknown')} ({len(current_content)}→{len(full_content)}文字)")
+                else:
+                    enhanced_result['content_enhanced'] = False
+                    logger.warning(f"⚠️ Confluence全文取得失敗またはサイズ不変: {result.get('title', 'Unknown')}")
+            
+            # Jiraの場合は従来通り短い場合のみ全文取得
+            elif (result.get('datasource') == 'jira' or result.get('source') == 'jira') and len(current_content) < 500:
+                logger.info(f"🔄 Jira全文取得開始: {result.get('title', 'Unknown')}")
+                full_content = self._fetch_full_page_content(result)
+                if full_content and len(full_content) > len(current_content):
+                    enhanced_result['content'] = full_content
+                    enhanced_result['content_enhanced'] = True
+                    logger.info(f"✅ Jira全文取得成功: {result.get('title', 'Unknown')} ({len(current_content)}→{len(full_content)}文字)")
                 else:
                     enhanced_result['content_enhanced'] = False
             else:

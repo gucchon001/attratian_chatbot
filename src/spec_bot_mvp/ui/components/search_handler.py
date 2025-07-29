@@ -4,14 +4,14 @@ from typing import Dict, Any
 
 from src.spec_bot_mvp.tools.hybrid_search_tool import HybridSearchTool
 from src.spec_bot_mvp.ui.components.thinking_process_ui import IntegratedThinkingProcessUI
-from src.spec_bot_mvp.ui.components.enhanced_response_generator import EnhancedResponseGenerator
+from src.spec_bot_mvp.agents.response_generator import ResponseGenerationAgent  # 変更: 全文取得対応版を使用
 
 logger = logging.getLogger(__name__)
 
 def format_search_results(search_data: Dict) -> str:
     """
     検索結果データ（辞書）をNotebookLMスタイルの包括的回答に変換
-    Enhanced Response Generatorを使用した高品質回答生成
+    ResponseGenerationAgent（全文取得対応）を使用した高品質回答生成
     """
     
     if not search_data or "error" in search_data:
@@ -25,32 +25,29 @@ def format_search_results(search_data: Dict) -> str:
     # 検索結果の取得
     ranked_results = step4_result.get("ranked_results", [])
     
-    # 検索メタデータの構築
-    search_metadata = {
-        "total_results": step3_result.get("total_results", 0),
-        "execution_summary": step3_result.get("execution_summary", ""),
-        "strategies_executed": step3_result.get("strategies_executed", []),
-        "query_details": step3_result.get("query_details", {})
-    }
-    
     try:
-        # Enhanced Response Generatorの初期化と実行
-        response_generator = EnhancedResponseGenerator()
+        # ResponseGenerationAgent（全文取得対応）の初期化と実行
+        response_generator = ResponseGenerationAgent()
         
-        # NotebookLMスタイルの包括的回答生成
-        comprehensive_response = response_generator.generate_comprehensive_response(
-            query=query,
+        # 包括的回答生成（全文取得機能付き）
+        comprehensive_response = response_generator.generate_response(
             search_results=ranked_results,
-            search_metadata=search_metadata
+            user_query=query
         )
         
-        logger.info(f"✅ NotebookLMスタイル回答生成完了: {len(comprehensive_response)}文字")
+        logger.info(f"✅ ResponseGenerationAgent回答生成完了: {len(comprehensive_response)}文字")
         return comprehensive_response
         
     except Exception as e:
-        logger.error(f"❌ Enhanced Response Generator エラー: {e}")
+        logger.error(f"❌ ResponseGenerationAgent エラー: {e}")
         
         # フォールバック: 従来の形式
+        search_metadata = {
+            "total_results": step3_result.get("total_results", 0),
+            "execution_summary": step3_result.get("execution_summary", ""),
+            "strategies_executed": step3_result.get("strategies_executed", []),
+            "query_details": step3_result.get("query_details", {})
+        }
         return _generate_fallback_format(query, ranked_results, search_metadata)
 
 def _generate_fallback_format(query: str, ranked_results: list, search_metadata: dict) -> str:
