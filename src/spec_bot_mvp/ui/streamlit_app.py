@@ -6,8 +6,9 @@
 """
 
 import streamlit as st
-import time
 import asyncio
+import time
+import logging
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 import sys
@@ -24,6 +25,8 @@ from src.spec_bot_mvp.steps.step3_cql_search import CQLSearchEngine
 from src.spec_bot_mvp.steps.step4_quality_evaluation import QualityEvaluator
 from src.spec_bot_mvp.steps.step5_agent_handover import AgentHandover
 from src.spec_bot_mvp.ui.components.thinking_process_ui import IntegratedThinkingProcessUI
+
+logger = logging.getLogger(__name__)
 
 class ThinkingProcessUI:
     """思考プロセス可視化UI管理クラス"""
@@ -339,7 +342,28 @@ def main():
                     status_text.text("完了！")
                 
                 # 実際の検索実行
-                search_result = search_tool.run(prompt)
+                search_data = search_tool.run(prompt)
+                
+                # 検索結果から回答生成
+                if isinstance(search_data, dict) and search_data.get("step4_result"):
+                    # Step4の結果から高品質な検索結果を取得
+                    ranked_results = search_data["step4_result"].get("ranked_results", [])
+                    
+                    if ranked_results:
+                        # Step5: 回答生成実行
+                        from src.spec_bot_mvp.agents.response_generator import ResponseGenerationAgent
+                        
+                        try:
+                            response_agent = ResponseGenerationAgent()
+                            search_result = response_agent.generate_response(ranked_results, prompt)
+                        except Exception as e:
+                            logger.error(f"回答生成エラー: {e}")
+                            search_result = f"検索は完了しましたが、回答生成中にエラーが発生しました: {e}"
+                    else:
+                        search_result = "申し訳ございません。検索結果が見つかりませんでした。"
+                else:
+                    # 旧式の場合（文字列応答）
+                    search_result = str(search_data)
                 
                 # 回答表示
                 message_placeholder.markdown(search_result)
