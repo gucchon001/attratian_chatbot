@@ -111,31 +111,39 @@ class CQLSearchEngine:
     def _init_search_strategies(self):
         """検索戦略の初期化"""
         
-        # 3段階検索戦略定義（タイトル検索優先 + 安全性重視）
+        # 4段階検索戦略定義（AND検索優先 + 段階的緩和）
         self.strategies = {
              "strategy1": {
-                 "name": "タイトル検索",
-                 "description": "タイトル一致による最高精度検索",
-                 "operator": "OR",
+                 "name": "タイトル厳密検索",
+                 "description": "タイトル内AND結合による最高精度検索",
+                 "operator": "AND",  # ← AND検索に変更
                  "match_type": "title",
-                 "max_results": 50,
-                 "weight": 2.0  # タイトル一致は最高重み
+                 "max_results": 20,
+                 "weight": 3.0  # 最高重み
              },
              "strategy2": {
-                 "name": "厳密検索", 
-                 "description": "AND結合による高精度本文検索",
-                 "operator": "AND",
-                 "match_type": "exact",
-                 "max_results": 100,
-                 "weight": 1.0
+                 "name": "タイトル近接検索", 
+                 "description": "タイトル内複合語・近接検索",
+                 "operator": "NEAR",  # 近接検索
+                 "match_type": "title_complex",
+                 "max_results": 30,
+                 "weight": 2.5
              },
              "strategy3": {
-                 "name": "補完検索",
-                 "description": "汎用語除外済みOR検索（制限付き使用）", 
+                 "name": "本文厳密検索",
+                 "description": "本文AND結合による高精度検索",
+                 "operator": "AND",
+                 "match_type": "exact",
+                 "max_results": 50,
+                 "weight": 1.5
+             },
+             "strategy4": {
+                 "name": "補完OR検索",
+                 "description": "汎用語除外済みOR検索（フォールバック）", 
                  "operator": "OR",
                  "match_type": "filtered",
-                 "max_results": 50,  # 結果数を制限
-                 "weight": 0.6  # 重みを下げる
+                 "max_results": 30,  # 結果数を制限
+                 "weight": 0.8  # 重みを下げる
              }
          }
         
@@ -397,8 +405,8 @@ class CQLSearchEngine:
                 
             return results, queries
         
-        # Stage 2: 厳密検索（中精度） - タイトル検索が不十分な場合のみ
-        logger.info(f"⚠️ タイトル検索結果不足（{title_results_count}件）→ 厳密検索実行")
+        # Stage 2: タイトル近接検索（中精度） - タイトル検索が不十分な場合のみ
+        logger.info(f"⚠️ タイトル検索結果不足（{title_results_count}件）→ タイトル近接検索実行")
         strategy2 = self.strategies["strategy2"]
         keywords2 = self._prepare_keywords_for_strategy("strategy2", primary_keywords, secondary_keywords)
         query2 = self._build_query(datasource, keywords2, filters, strategy2)
@@ -409,19 +417,19 @@ class CQLSearchEngine:
             "strategy": strategy2["name"]
         }
         
-        # 厳密検索実行（件数制限付き）
+        # タイトル近接検索実行（件数制限付き）
         limited_strategy2 = {**strategy2, "max_results": min(strategy2["max_results"], max_total_count - title_results_count)}
         
         if self.use_real_api:
             api_results2 = self._execute_api_search(datasource, query2, limited_strategy2)
             results["strategy_results"]["strategy2"] = api_results2
             results["combined_results"].extend(api_results2)
-            logger.info(f"✅ 厳密検索完了 ({strategy2['name']}): {len(api_results2)}件")
+            logger.info(f"✅ タイトル近接検索完了 ({strategy2['name']}): {len(api_results2)}件")
         else:
             mock_results2 = self._execute_mock_search(datasource, query2, limited_strategy2)
             results["strategy_results"]["strategy2"] = mock_results2
             results["combined_results"].extend(mock_results2)
-            logger.info(f"🎭 厳密検索完了 ({strategy2['name']}): {len(mock_results2)}件")
+            logger.info(f"🎭 タイトル近接検索完了 ({strategy2['name']}): {len(mock_results2)}件")
         
         # 重複除去
         results["combined_results"] = self._deduplicate_results(results["combined_results"])
@@ -438,7 +446,7 @@ class CQLSearchEngine:
             logger.info("🔍 [段階的検索]除外フィルターはスキップされました（設定無効）")
         
         final_count = len(results["combined_results"])
-        logger.info(f"🎯 段階的検索完了: {final_count}件（タイトル{title_results_count}件 + 厳密{final_count-title_results_count}件）")
+        logger.info(f"🎯 段階的検索完了: {final_count}件（タイトル{title_results_count}件 + 近接{final_count-title_results_count}件）")
         
         return results, queries
     
@@ -446,13 +454,16 @@ class CQLSearchEngine:
                                      secondary_keywords: List[str]) -> List[str]:
         """戦略別キーワード準備（汎用語フィルター付き）"""
         
-        if strategy_id == "strategy1":  # タイトル検索
+        if strategy_id == "strategy1":  # タイトル厳密検索
             # タイトル検索では汎用語も含める（完全一致前提）
             return primary_keywords[:3]
-        elif strategy_id == "strategy2":  # 厳密検索
+        elif strategy_id == "strategy2":  # タイトル近接検索
+            # NEAR検索では汎用語を含めても問題ない
+            return primary_keywords + secondary_keywords[:2]
+        elif strategy_id == "strategy3":  # 本文厳密検索
             # AND検索では汎用語を含めても問題ない
             return primary_keywords + secondary_keywords[:2]
-        elif strategy_id == "strategy3":  # 緩和検索
+        elif strategy_id == "strategy4":  # 補完OR検索
             # OR検索では汎用語を除外（重要！）
             filtered_keywords = []
             
@@ -491,6 +502,10 @@ class CQLSearchEngine:
         if strategy["match_type"] == "title":
             return self._build_title_query(datasource, keywords, filters)
         
+        # タイトル複合語検索の場合も専用メソッドを使用
+        if strategy["match_type"] == "title_complex":
+            return self._build_title_complex_query(datasource, keywords, filters)
+        
         # 通常のtext検索
         operator = strategy["operator"]
         if strategy["match_type"] == "exact":
@@ -498,12 +513,170 @@ class CQLSearchEngine:
         else:
             keyword_clause = f" {operator} ".join(f'"{kw}"' for kw in keywords)
         
+        # データソース別クエリ構築
         if datasource == "jira":
             return self._build_jql_query(keyword_clause, filters)
-        elif datasource == "confluence":
-            return self._build_cql_query(keyword_clause, filters)
         else:
-            return f"text ~ ({keyword_clause})"
+            return self._build_cql_query(keyword_clause, filters)
+    
+    def _build_title_query(self, datasource: str, keywords: List[str], filters: Dict[str, Any]) -> str:
+        """タイトル専用検索クエリ構築（AND検索とNEAR検索対応）"""
+        
+        if datasource == "jira":
+            # JQL: summary（タイトル）検索
+            title_conditions = []
+            
+            # キーワード数に応じて戦略決定
+            if len(keywords) >= 2:
+                # 複数キーワード → AND検索
+                for keyword in keywords:
+                    title_conditions.append(f'summary ~ "{keyword}"')
+                base_query = f"({' AND '.join(title_conditions)})"
+            else:
+                # 単一キーワード → 単純検索
+                base_query = f'summary ~ "{keywords[0]}"'
+            
+            conditions = [base_query]
+            
+            # フィルター追加
+            if "project" in filters:
+                conditions.append(f"project = \"{filters['project']}\"")
+            
+            if "status" in filters and filters["status"]:
+                status_list = ", ".join(f'"{s}"' for s in filters["status"])
+                conditions.append(f"status IN ({status_list})")
+            
+            if "issuetype" in filters and filters["issuetype"]:
+                type_list = ", ".join(f'"{t}"' for t in filters["issuetype"])
+                conditions.append(f"issuetype IN ({type_list})")
+            
+            # 削除・廃止コンテンツ除外フィルター追加（JQL用）
+            exclusion_conditions = self._build_jql_exclusion_conditions()
+            conditions.extend(exclusion_conditions)
+            
+            return " AND ".join(conditions)
+            
+        else:  # Confluence
+            # CQL: title検索（AND検索とNEAR検索対応）
+            title_conditions = []
+            
+            # キーワード数と戦略に応じてクエリ構築
+            if len(keywords) >= 2:
+                # 複数キーワード → AND検索を基本とする
+                for keyword in keywords:
+                    title_conditions.append(f'title ~ "{keyword}"')
+                
+                # AND検索
+                base_query = f"({' AND '.join(title_conditions)})"
+                
+                # 近接検索も併用（複合語検索）
+                # "会員.*ログイン|ログイン.*会員" のようなパターンも追加
+                if len(keywords) == 2:
+                    kw1, kw2 = keywords[0], keywords[1]
+                    near_patterns = [
+                        f'title ~ "{kw1}.*{kw2}"',  # kw1の後にkw2
+                        f'title ~ "{kw2}.*{kw1}"',  # kw2の後にkw1
+                    ]
+                    
+                    # 複合語検索をOR条件として追加
+                    near_query = f"({' OR '.join(near_patterns)})"
+                    base_query = f"({base_query} OR {near_query})"
+                
+            else:
+                # 単一キーワード → 単純検索
+                base_query = f'title ~ "{keywords[0]}"'
+            
+            conditions = [base_query]
+            
+            # フィルター追加
+            if "space_keys" in filters and filters["space_keys"]:
+                space_list = ", ".join(f'"{s}"' for s in filters["space_keys"])
+                conditions.append(f"space IN ({space_list})")
+            else:
+                # デフォルトスペース設定（CLIENTTOMO）
+                conditions.append(f'space = "{self.settings.confluence_space}"')
+            
+            if "content_type" in filters:
+                conditions.append(f"type = \"{filters['content_type']}\"")
+            
+            # 削除・廃止コンテンツ除外フィルター追加
+            exclusion_conditions = self._build_title_exclusion_conditions()
+            conditions.extend(exclusion_conditions)
+            
+            return " AND ".join(conditions)
+
+    def _build_title_complex_query(self, datasource: str, keywords: List[str], filters: Dict[str, Any]) -> str:
+        """タイトル複合語検索クエリ構築（近接・複合語専用）"""
+        
+        if datasource == "jira":
+            # JQL: summary複合語検索
+            if len(keywords) >= 2:
+                # 複合語パターン生成
+                complex_patterns = []
+                for i in range(len(keywords)):
+                    for j in range(len(keywords)):
+                        if i != j:
+                            complex_patterns.append(f'summary ~ "{keywords[i]}.*{keywords[j]}"')
+                
+                base_query = f"({' OR '.join(complex_patterns)})"
+            else:
+                # 単一キーワードの場合は通常検索
+                base_query = f'summary ~ "{keywords[0]}"'
+            
+            conditions = [base_query]
+            
+            # フィルター追加
+            if "project" in filters:
+                conditions.append(f"project = \"{filters['project']}\"")
+            
+            # 削除・廃止コンテンツ除外フィルター追加（JQL用）
+            exclusion_conditions = self._build_jql_exclusion_conditions()
+            conditions.extend(exclusion_conditions)
+            
+            return " AND ".join(conditions)
+            
+        else:  # Confluence
+            # CQL: title複合語検索
+            if len(keywords) >= 2:
+                # 複合語パターン生成（より柔軟な検索）
+                complex_patterns = []
+                
+                # 各キーワードペアで複合語検索
+                for i in range(len(keywords)):
+                    for j in range(len(keywords)):
+                        if i != j:
+                            # 前後順序の複合語
+                            complex_patterns.append(f'title ~ "{keywords[i]}.*{keywords[j]}"')
+                            # より広範囲な複合語（単語間に他の語が入ることを許可）
+                            complex_patterns.append(f'title ~ "{keywords[i]}.*\\b.*{keywords[j]}"')
+                
+                # 完全一致の複合語も追加
+                combined_keywords = "".join(keywords)
+                complex_patterns.append(f'title ~ "{combined_keywords}"')
+                
+                base_query = f"({' OR '.join(complex_patterns)})"
+            else:
+                # 単一キーワードの場合は通常検索
+                base_query = f'title ~ "{keywords[0]}"'
+            
+            conditions = [base_query]
+            
+            # フィルター追加
+            if "space_keys" in filters and filters["space_keys"]:
+                space_list = ", ".join(f'"{s}"' for s in filters["space_keys"])
+                conditions.append(f"space IN ({space_list})")
+            else:
+                # デフォルトスペース設定（CLIENTTOMO）
+                conditions.append(f'space = "{self.settings.confluence_space}"')
+            
+            if "content_type" in filters:
+                conditions.append(f"type = \"{filters['content_type']}\"")
+            
+            # 削除・廃止コンテンツ除外フィルター追加
+            exclusion_conditions = self._build_title_exclusion_conditions()
+            conditions.extend(exclusion_conditions)
+            
+            return " AND ".join(conditions)
     
     def _build_jql_query(self, keyword_clause: str, filters: Dict[str, Any]) -> str:
         """JQLクエリ構築"""
@@ -549,62 +722,6 @@ class CQLSearchEngine:
         
         return " AND ".join(conditions)
     
-    def _build_title_query(self, datasource: str, keywords: List[str], filters: Dict[str, Any]) -> str:
-        """タイトル専用検索クエリ構築"""
-        
-        if datasource == "jira":
-            # JQL: summary（タイトル）検索
-            title_conditions = []
-            for keyword in keywords:
-                title_conditions.append(f'summary ~ "{keyword}"')
-            
-            base_query = f"({' OR '.join(title_conditions)})"
-            conditions = [base_query]
-            
-            # フィルター追加
-            if "project" in filters:
-                conditions.append(f"project = \"{filters['project']}\"")
-            
-            if "status" in filters and filters["status"]:
-                status_list = ", ".join(f'"{s}"' for s in filters["status"])
-                conditions.append(f"status IN ({status_list})")
-            
-            if "issuetype" in filters and filters["issuetype"]:
-                type_list = ", ".join(f'"{t}"' for t in filters["issuetype"])
-                conditions.append(f"issuetype IN ({type_list})")
-            
-            # 削除・廃止コンテンツ除外フィルター追加（JQL用）
-            exclusion_conditions = self._build_jql_exclusion_conditions()
-            conditions.extend(exclusion_conditions)
-            
-            return " AND ".join(conditions)
-            
-        else:  # Confluence
-            # CQL: title検索
-            title_conditions = []
-            for keyword in keywords:
-                title_conditions.append(f'title ~ "{keyword}"')
-            
-            base_query = f"({' OR '.join(title_conditions)})"
-            conditions = [base_query]
-            
-            # フィルター追加
-            if "space_keys" in filters and filters["space_keys"]:
-                space_list = ", ".join(f'"{s}"' for s in filters["space_keys"])
-                conditions.append(f"space IN ({space_list})")
-            else:
-                # デフォルトスペース設定（CLIENTTOMO）
-                conditions.append(f'space = "{self.settings.confluence_space}"')
-            
-            if "content_type" in filters:
-                conditions.append(f"type = \"{filters['content_type']}\"")
-            
-            # 削除・廃止コンテンツ除外フィルター追加
-            exclusion_conditions = self._build_title_exclusion_conditions()
-            conditions.extend(exclusion_conditions)
-            
-            return " AND ".join(conditions)
-
     def _build_cql_query(self, keyword_clause: str, filters: Dict[str, Any]) -> str:
         """CQLクエリ構築"""
         
@@ -1263,11 +1380,19 @@ class CQLSearchEngine:
             executed_strategies = []
             title_count = len(strategy_results.get("strategy1", []))
             if title_count > 0:
-                executed_strategies.append(f"タイトル検索:{title_count}件")
+                executed_strategies.append(f"タイトル厳密検索:{title_count}件")
             
-            exact_count = len(strategy_results.get("strategy2", []))
+            near_count = len(strategy_results.get("strategy2", []))
+            if near_count > 0:
+                executed_strategies.append(f"タイトル近接検索:{near_count}件")
+            
+            exact_count = len(strategy_results.get("strategy3", []))
             if exact_count > 0:
-                executed_strategies.append(f"厳密検索:{exact_count}件")
+                executed_strategies.append(f"本文厳密検索:{exact_count}件")
+            
+            filtered_count = len(strategy_results.get("strategy4", []))
+            if filtered_count > 0:
+                executed_strategies.append(f"補完OR検索:{filtered_count}件")
             
             strategy_summary = " + ".join(executed_strategies) if executed_strategies else "なし"
             summary_parts.append(f"{datasource.title()}: {total_count}件 ({strategy_summary})")
