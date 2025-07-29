@@ -18,6 +18,12 @@ sys.path.insert(0, str(project_root))
 
 from src.spec_bot_mvp.tools.hybrid_search_tool import HybridSearchTool
 from src.spec_bot_mvp.config.settings import Settings
+from src.spec_bot_mvp.steps.step1_keyword_extraction import KeywordExtractor
+from src.spec_bot_mvp.steps.step2_datasource_judgment import DataSourceJudgment
+from src.spec_bot_mvp.steps.step3_cql_search import CQLSearchEngine
+from src.spec_bot_mvp.steps.step4_quality_evaluation import QualityEvaluator
+from src.spec_bot_mvp.steps.step5_agent_handover import AgentHandover
+from src.spec_bot_mvp.ui.components.thinking_process_ui import IntegratedThinkingProcessUI
 
 class ThinkingProcessUI:
     """思考プロセス可視化UI管理クラス"""
@@ -176,10 +182,19 @@ async def execute_search_with_visualization(user_query: str) -> Dict:
         
         await asyncio.sleep(0.5)  # UI更新のため
         
-        analysis_result = {"keywords": user_query.split(), "intent": "search"}
+        # 実際のStep1キーワード抽出
+        keyword_extractor = KeywordExtractor()
+        analysis_result = keyword_extractor.extract_keywords(user_query)
+        
+        # UIが期待する形式で結果を渡す
         thinking_ui.update_stage_status("analysis", "completed", {
-            "検出キーワード": ", ".join(analysis_result["keywords"]),
-            "推定検索意図": analysis_result["intent"]
+            "primary_keywords": analysis_result.get("primary_keywords", []),
+            "extracted_keywords": analysis_result.get("primary_keywords", []),  # フォールバック用
+            "search_intent": analysis_result.get("search_intent", "機能照会"),
+            "confidence_score": analysis_result.get("confidence_score", 0.0),
+            "extraction_method": analysis_result.get("extraction_method", "unknown"),
+            "user_query": user_query,  # ★ 追加: ユーザークエリ
+            "original_query": user_query  # ★ 追加: 互換性
         })
         
         # Stage 2: ツール選択
