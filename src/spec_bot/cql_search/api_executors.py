@@ -197,61 +197,96 @@ class MockAPIExecutor(APIExecutor):
     
     def execute(self, cql: str) -> List[Dict[str, Any]]:
         """
-        モック検索結果を返す
+        モック検索結果を返す（動的データ生成版）
         
         Args:
-            cql: CQLクエリ（実際には使用されない）
+            cql: CQLクエリ
             
         Returns:
-            List[Dict[str, Any]]: モック検索結果
+            List[Dict[str, Any]]: クエリに関連するモック検索結果
         """
-        logger.debug(f"モックAPI実行: CQL='{cql}'")
+        logger.debug(f"動的モックAPI実行: CQL='{cql}'")
         
-        # CQLに応じて適切なモックデータをフィルタ
-        if 'ログイン' in cql:
-            return [item for item in self.mock_data if 'ログイン' in item.get('title', '')]
-        elif 'title ~' in cql:
-            return self.mock_data[:2]  # タイトル検索は少なめ
+        # CQLからキーワードを抽出
+        keywords = self._extract_keywords_from_cql(cql)
+        
+        # キーワードに基づく動的データ生成
+        if keywords:
+            return self._generate_dynamic_mock_data(keywords)
         else:
-            return self.mock_data
+            # キーワード抽出失敗時は基本データを返す
+            return self._get_basic_mock_data()
     
-    def _default_mock_data(self) -> List[Dict[str, Any]]:
-        """デフォルトのモックデータ"""
+    def _extract_keywords_from_cql(self, cql: str) -> List[str]:
+        """CQLクエリからキーワードを抽出"""
+        import re
+        keywords = []
+        
+        # title ~ "keyword" パターンを抽出
+        title_matches = re.findall(r'title\s*~\s*["\']([^"\']+)["\']', cql)
+        keywords.extend(title_matches)
+        
+        # text ~ "keyword" パターンを抽出
+        text_matches = re.findall(r'text\s*~\s*["\']([^"\']+)["\']', cql)
+        keywords.extend(text_matches)
+        
+        return keywords
+    
+    def _generate_dynamic_mock_data(self, keywords: List[str]) -> List[Dict[str, Any]]:
+        """キーワードに基づく動的モックデータ生成"""
+        mock_results = []
+        
+        for i, keyword in enumerate(keywords[:3]):  # 最大3件
+            # キーワード別のタイトル・内容生成
+            if "ログイン" in keyword:
+                base_title = f"{keyword}機能"
+                content = f"{keyword}に関する機能仕様です。認証フローやセキュリティ要件について詳細に記載されています。"
+            elif "急募" in keyword:
+                base_title = f"{keyword}機能"
+                content = f"{keyword}に関する機能仕様です。申込み手続きや管理画面について詳細に記載されています。"
+            elif "API" in keyword:
+                base_title = f"{keyword}設計書"
+                content = f"{keyword}の設計仕様です。エンドポイント定義やレスポンス形式について記載されています。"
+            elif "設計" in keyword:
+                base_title = f"{keyword}ドキュメント"
+                content = f"システムの{keyword}に関する資料です。アーキテクチャや技術仕様について説明されています。"
+            else:
+                base_title = f"{keyword}仕様書"
+                content = f"{keyword}に関する仕様書です。詳細な機能説明と実装要件が記載されています。"
+            
+            mock_results.append({
+                'id': f'dynamic-{i+1}',
+                'title': f'{i+1:03d}_【FIX】{base_title}',
+                'type': 'page',
+                'status': 'current',
+                'url': f'https://example.com/pages/dynamic-{i+1}',
+                'space': {'key': 'CLIENTTOMO', 'name': 'Client Tomo Space'},
+                'body': content,
+                'excerpt': f'{keyword}関連の詳細情報...',
+                'lastModified': '2024-01-01T00:00:00.000Z',
+                'author': {'username': 'system', 'displayName': 'System Generated'}
+            })
+        
+        return mock_results
+    
+    def _get_basic_mock_data(self) -> List[Dict[str, Any]]:
+        """基本的なモックデータ（キーワード抽出失敗時用）"""
         return [
             {
-                'id': 'mock-001',
-                'title': '042_【FIX】会員ログイン・ログアウト機能',
+                'id': 'basic-001',
+                'title': '001_【FIX】システム基本機能',
                 'type': 'page',
                 'status': 'current',
-                'url': 'https://example.com/pages/001',
+                'url': 'https://example.com/pages/basic-001',
                 'space': {'key': 'CLIENTTOMO', 'name': 'Client Tomo Space'},
-                'body': '会員がサービスサイトにてログイン、ログアウトを行うための機能です。',
-                'excerpt': 'ログイン機能の仕様書...',
+                'body': 'システムの基本機能に関する仕様書です。',
+                'excerpt': 'システム基本機能の詳細...',
                 'lastModified': '2024-01-01T00:00:00.000Z',
-                'author': {'username': 'test_user', 'displayName': 'Test User'}
-            },
-            {
-                'id': 'mock-002',
-                'title': '681_【FIX】クライアント企業ログイン・ログアウト機能',
-                'type': 'page',
-                'status': 'current',
-                'url': 'https://example.com/pages/002',
-                'space': {'key': 'CLIENTTOMO', 'name': 'Client Tomo Space'},
-                'body': 'クライアント企業管理者が、クライアント企業管理画面にログイン/ログアウトするための機能。',
-                'excerpt': 'クライアント企業向けログイン...',
-                'lastModified': '2024-01-02T00:00:00.000Z',
-                'author': {'username': 'test_user', 'displayName': 'Test User'}
-            },
-            {
-                'id': 'mock-003',
-                'title': '451_【FIX】全体管理者ログイン・ログアウト機能',
-                'type': 'page',
-                'status': 'current',
-                'url': 'https://example.com/pages/003',
-                'space': {'key': 'CLIENTTOMO', 'name': 'Client Tomo Space'},
-                'body': '全体管理者が、全体管理画面にログイン/ログアウトするための機能。',
-                'excerpt': '全体管理者向けログイン...',
-                'lastModified': '2024-01-03T00:00:00.000Z',
-                'author': {'username': 'test_user', 'displayName': 'Test User'}
+                'author': {'username': 'system', 'displayName': 'System Generated'}
             }
-        ] 
+        ]
+    
+    def _default_mock_data(self) -> List[Dict[str, Any]]:
+        """デフォルトのモックデータ（下位互換性のため残存）"""
+        # 下位互換性のため残すが、実際にはexecute()で動的生成を使用
+        return self._get_basic_mock_data() 

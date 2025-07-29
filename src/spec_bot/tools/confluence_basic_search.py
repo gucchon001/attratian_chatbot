@@ -174,24 +174,40 @@ class ConfluenceBasicSearch:
         
         main_keyword = keywords[0]
         
-        # ログイン機能の特別処理
-        if "ログイン" in main_keyword or any("ログイン" in kw for kw in keywords):
-            logger.info("ログイン機能検索の特別処理を実行")
+        # 特定キーワードの特別処理（ログイン以外にも対応）
+        special_keywords = {
+            "ログイン": ["ログイン", "認証", "ユーザー登録", "権限"],
+            "急募": ["急募", "申込", "オプション", "契約"],
+            "API": ["API", "設計", "エンドポイント", "インターフェース"],
+        }
+        
+        # 特別処理が必要なキーワードを検出
+        special_keyword = None
+        for keyword, related_terms in special_keywords.items():
+            if keyword in main_keyword or any(keyword in kw for kw in keywords):
+                special_keyword = keyword
+                related_terms_list = related_terms
+                break
+        
+        if special_keyword:
+            logger.info(f"{special_keyword}機能検索の特別処理を実行")
             
-            # 戦略1: ログイン関連の包括検索（OR演算子使用）
-            login_related_cql = f'space = "{self.space_key}" AND (title ~ "ログイン" OR title ~ "認証" OR title ~ "ユーザー登録" OR title ~ "権限" OR text ~ "ログイン" OR text ~ "認証")'
-            logger.info(f"ログイン包括検索実行: {login_related_cql}")
+            # 関連語を使った包括検索（OR演算子使用）
+            related_conditions = " OR ".join([f'title ~ "{term}"' for term in related_terms_list])
+            text_conditions = " OR ".join([f'text ~ "{term}"' for term in related_terms_list])
+            special_cql = f'space = "{self.space_key}" AND ({related_conditions} OR {text_conditions})'
+            logger.info(f"{special_keyword}包括検索実行: {special_cql}")
             
             try:
-                results = self.confluence.cql(login_related_cql, limit=20)
+                results = self.confluence.cql(special_cql, limit=20)
                 if results and results.get('totalSize', 0) > 0:
                     return {
                         'results': results,
-                        'strategy_used': 'Login Comprehensive Search',
-                        'cql_query': login_related_cql
+                        'strategy_used': f'{special_keyword} Comprehensive Search',
+                        'cql_query': special_cql
                     }
             except Exception as e:
-                logger.warning(f"ログイン包括検索エラー: {e}")
+                logger.warning(f"{special_keyword}包括検索エラー: {e}")
         
         # 戦略1: タイトル優先（全キーワード）
         if len(keywords) >= 2:

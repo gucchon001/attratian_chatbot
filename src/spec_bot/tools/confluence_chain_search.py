@@ -272,15 +272,27 @@ class ConfluenceChainSearch:
     
     def _get_fallback_analysis(self, user_question: str) -> Dict[str, Any]:
         """フォールバック: LLMエラー時の基本分析結果"""
-        # 基本的なキーワード抽出
+        # 基本的なキーワード抽出（より汎用的）
         keywords = []
+        
+        # 特定キーワードの検出
         if "急募" in user_question:
             keywords = ["急募"]
         elif "ログイン" in user_question:
             keywords = ["ログイン"]
+        elif "API" in user_question:
+            keywords = ["API"]
+        elif "設計" in user_question:
+            keywords = ["設計"]
+        elif "管理" in user_question:
+            keywords = ["管理"]
         else:
-            # 簡単な単語分割
-            keywords = [word for word in user_question.split() if len(word) > 1 and word not in ["の", "について", "を", "教えて", "仕様"]]
+            # 一般的な単語分割
+            import re
+            # より確実なキーワード抽出
+            extracted_words = re.findall(r'[ァ-ヶー]+|[一-龯]+|[A-Za-z0-9]+', user_question)
+            stop_words = {"の", "について", "を", "教えて", "仕様", "詳細", "機能", "確認", "調べて"}
+            keywords = [word for word in extracted_words if len(word) >= 2 and word not in stop_words]
         
         if not keywords:
             keywords = [user_question]
