@@ -130,6 +130,8 @@ class KeywordExtractor:
             user_query=user_query
         )
         
+        logger.info(f"Gemini抽出実行: {user_query}")
+        
         response = self.llm.invoke(prompt)
         
         # JSON解析
@@ -140,26 +142,38 @@ class KeywordExtractor:
             json_end = response.content.rfind('}') + 1
             json_str = response.content[json_start:json_end]
             
+            logger.debug(f"Gemini応答JSON: {json_str}")
+            
             result = json.loads(json_str)
             
             # 保守的抽出のため、3キーワード上限
-            if len(result.get("primary_keywords", [])) > 3:
-                result["primary_keywords"] = result["primary_keywords"][:3]
+            if len(result.get("keywords", [])) > 3:
+                result["keywords"] = result["keywords"][:3]
             
             # 仕様書準拠の戻り値形式に調整
-            result["secondary_keywords"] = []  # 仕様書では主要キーワードのみ
+            formatted_result = {
+                "primary_keywords": result.get("keywords", []),
+                "secondary_keywords": [],  # 仕様書では主要キーワードのみ
+                "search_intent": self._infer_intent(user_query),
+                "extraction_method": result.get("extraction_method", "gemini_conservative_v3"),
+                "confidence_score": result.get("confidence", 0.85),
+                "reasoning": result.get("reasoning", ""),
+                "user_query": user_query,  # ★ 追加: ユーザークエリを結果に含める
+                "original_query": user_query  # ★ 追加: 互換性のため
+            }
             
-            logger.info(f"Gemini保守的抽出成功: {result['primary_keywords']}")
-            return result
+            logger.info(f"Gemini保守的抽出成功: {formatted_result['primary_keywords']} (元クエリ: {user_query})")
+            return formatted_result
             
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(f"Gemini応答JSON解析失敗: {e}")
+            logger.error(f"レスポンス内容: {response.content}")
             raise
     
     def _extract_with_rules(self, user_query: str) -> Dict[str, Any]:
         """ルールベースキーワード抽出（保守的フォールバック）"""
         
-        logger.info("保守的ルールベース抽出実行")
+        logger.info(f"保守的ルールベース抽出実行: {user_query}")
         
         # 前処理: 汎用語除去
         cleaned_query = self._remove_generic_terms(user_query)
@@ -176,7 +190,7 @@ class KeywordExtractor:
         # 検索意図分析
         search_intent = self._analyze_search_intent_rules(user_query)
         
-        return {
+        result = {
             "primary_keywords": final_keywords,
             "secondary_keywords": [],
             "search_intent": search_intent,
@@ -185,8 +199,13 @@ class KeywordExtractor:
             "confidence_score": 0.80,  # 保守的ルールベースの信頼度
             "compound_words_detected": self._detect_compounds(user_query),
             "removed_particles": self._get_removed_terms(user_query, cleaned_query),
-            "conservative_note": "入力に忠実な保守的抽出を実行"
+            "conservative_note": "入力に忠実な保守的抽出を実行",
+            "user_query": user_query,  # ★ 追加: ユーザークエリを結果に含める
+            "original_query": user_query  # ★ 追加: 互換性のため
         }
+        
+        logger.info(f"ルールベース抽出成功: {result['primary_keywords']} (元クエリ: {user_query})")
+        return result
     
     def _remove_generic_terms(self, query: str) -> str:
         """汎用語の除去"""

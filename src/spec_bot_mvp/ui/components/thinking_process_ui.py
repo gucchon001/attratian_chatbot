@@ -261,11 +261,37 @@ class IntegratedThinkingProcessUI:
                 
                 # ステップ1: 質問解析
                 st.markdown("#### 📝 ステップ1: ユーザー質問の解析")
-                # 実際のユーザークエリを動的に取得
-                user_query = details.get("user_query", details.get("original_query", "ユーザー質問"))
-                if user_query == "ユーザー質問" and keywords:
-                    # キーワードから推測
-                    user_query = f"「{' '.join(keywords)}」に関する質問"
+                # 実際のユーザークエリを複数のソースから動的に取得
+                user_query = details.get("user_query") or details.get("original_query")
+                
+                # session_stateからも取得を試行
+                if not user_query or user_query == "ユーザー質問":
+                    try:
+                        import streamlit as st
+                        # 最新のメッセージから取得
+                        if hasattr(st.session_state, 'messages') and st.session_state.messages:
+                            last_user_message = None
+                            for msg in reversed(st.session_state.messages):
+                                if msg.get("role") == "user":
+                                    last_user_message = msg.get("content")
+                                    break
+                            if last_user_message:
+                                user_query = last_user_message
+                        
+                        # 直接的なsession_stateのキーからも試行
+                        if not user_query or user_query == "ユーザー質問":
+                            user_query = getattr(st.session_state, 'current_user_query', None) or \
+                                        getattr(st.session_state, 'last_query', None)
+                    except:
+                        pass
+                
+                # 最終的なフォールバック：キーワードから推測
+                if not user_query or user_query == "ユーザー質問":
+                    if keywords:
+                        user_query = f"「{' '.join(keywords)}」に関する質問"
+                    else:
+                        user_query = "質問内容（取得中...）"
+                
                 st.info(f"「{user_query}」→ **{intent}** として判定")
                 
                 # ステップ2: キーワード抽出
@@ -274,6 +300,9 @@ class IntegratedThinkingProcessUI:
                     keyword_tags = " ".join([f"<span style='background: #e3f2fd; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin: 2px;'>{kw}</span>" for kw in keywords])
                     st.markdown(f"**抽出結果:** {keyword_tags}", unsafe_allow_html=True)
                     st.caption(f"信頼度: {confidence:.1%} | 抽出手法: {details.get('extraction_method', 'AI分析')}")
+                else:
+                    st.warning("⚠️ キーワード抽出結果が0件です。入力の解析に問題がある可能性があります。")
+                    st.caption("デバッグ情報: 抽出エンジンの詳細ログを確認してください。")
                 
                 # ステップ3: データソース判定
                 st.markdown("#### 🎯 ステップ3: 最適データソースの判定")
