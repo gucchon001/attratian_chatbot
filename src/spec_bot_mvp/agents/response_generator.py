@@ -519,18 +519,30 @@ class ResponseGenerationAgent:
             
             # excerptが短すぎる場合、実際のページ全文を取得を試行
             current_content = result.get('content') or result.get('excerpt', '')
+            current_length = len(current_content)
             
-            if current_content and len(current_content) < 300:
+            logger.info(f"🔍 コンテンツ分析: {result.get('title', 'Unknown')} - 現在長: {current_length}文字")
+            
+            if current_content and current_length < 800:  # 300→800に変更
+                logger.info(f"⚡ 全文取得実行: 閾値({current_length} < 800)に該当")
                 # 全文取得を試行
                 full_content = self._fetch_full_page_content(result)
-                if full_content and len(full_content) > len(current_content):
+                if full_content and len(full_content) > current_length:
                     enhanced_result['content'] = full_content
                     enhanced_result['content_enhanced'] = True
-                    logger.info(f"✅ 全文取得成功: {result.get('title', 'Unknown')} ({len(current_content)}→{len(full_content)}文字)")
+                    logger.info(f"✅ 全文取得成功: {result.get('title', 'Unknown')} ({current_length}→{len(full_content)}文字)")
                 else:
                     enhanced_result['content_enhanced'] = False
+                    if not full_content:
+                        logger.warning(f"⚠️ 全文取得失敗: APIエラーまたは空応答")
+                    else:
+                        logger.info(f"ℹ️ 全文取得スキップ: 既存内容が十分 ({current_length}文字)")
             else:
                 enhanced_result['content_enhanced'] = False
+                if current_length >= 800:
+                    logger.info(f"ℹ️ 全文取得スキップ: 既存内容が十分 ({current_length} >= 800文字)")
+                else:
+                    logger.warning(f"⚠️ 全文取得スキップ: コンテンツなし")
             
             enhanced_results.append(enhanced_result)
         
@@ -576,6 +588,12 @@ class ResponseGenerationAgent:
         try:
             from atlassian import Confluence
             
+            # API接続設定確認
+            logger.info(f"🔗 Confluence API接続開始")
+            logger.info(f"   Domain: {self.settings.atlassian_domain}")
+            logger.info(f"   Email: {self.settings.atlassian_email}")
+            logger.info(f"   Token: {'設定済み' if self.settings.atlassian_api_token else '未設定'}")
+            
             # API接続設定
             confluence = Confluence(
                 url=f"https://{self.settings.atlassian_domain}",
@@ -589,6 +607,8 @@ class ResponseGenerationAgent:
                 logger.warning("⚠️ ConfluenceページID不明")
                 return ""
             
+            logger.info(f"📄 ページ詳細取得: ID={page_id}")
+            
             # ページ詳細を取得（body.storage形式）
             page_content = confluence.get_page_by_id(
                 page_id, 
@@ -598,14 +618,18 @@ class ResponseGenerationAgent:
             if page_content and 'body' in page_content:
                 storage_content = page_content['body']['storage']['value']
                 
+                logger.info(f"✅ Confluence API取得成功: {len(storage_content)}文字（生HTML）")
+                
                 # HTMLタグを除去してテキストのみ抽出
                 import re
                 clean_content = re.sub(r'<[^>]+>', '', storage_content)
                 clean_content = re.sub(r'\s+', ' ', clean_content).strip()
                 
+                logger.info(f"✅ HTMLクリーニング完了: {len(clean_content)}文字（テキスト）")
+                
                 return clean_content
             else:
-                logger.warning("⚠️ Confluenceページコンテンツ取得失敗")
+                logger.warning("⚠️ Confluenceページコンテンツ取得失敗: body不在")
                 return ""
                 
         except ImportError:
@@ -613,6 +637,10 @@ class ResponseGenerationAgent:
             return ""
         except Exception as e:
             logger.error(f"❌ Confluence全文取得エラー: {e}")
+            logger.error(f"   結果データ: {result}")
+            # 詳細なエラー情報
+            import traceback
+            logger.error(f"   スタックトレース: {traceback.format_exc()}")
             return ""
     
     def _fetch_jira_issue_content(self, result: Dict) -> str:
