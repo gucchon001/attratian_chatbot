@@ -155,7 +155,7 @@ class ResponseGenerationAgent:
 
     def generate_response(self, search_results: List[Dict], user_query: str, memory_context: str = "") -> str:
         """
-        検索結果を統合して最終回答を生成
+        検索結果を統合して最終回答を生成（全文取得対応）
         
         Args:
             search_results: 検索結果リスト
@@ -166,29 +166,43 @@ class ResponseGenerationAgent:
             統合された最終回答
         """
         try:
-            # 検索結果を構造化文字列に変換
-            formatted_results = self._format_search_results(search_results)
+            logger.info("💡 回答生成開始: クエリ='%s', 結果数=%d, メモリー=%s", user_query, len(search_results), bool(memory_context))
             
-            # メモリーコンテキストがある場合は質問を拡張
+            # Step 1: 検索結果の全文取得で強化
+            enhanced_results = self._enhance_content_with_full_fetch(search_results)
+            enhanced_count = sum(1 for result in enhanced_results if result.get('content_enhanced', False))
+            
+            if enhanced_count > 0:
+                logger.info(f"✅ コンテンツ強化完了: {enhanced_count}/{len(search_results)}件で全文取得成功")
+            else:
+                logger.info("ℹ️ 既存のexcerptを使用（全文取得は不要またはスキップ）")
+            
+            # Step 2: 強化された検索結果を構造化文字列に変換
+            formatted_results = self._format_search_results(enhanced_results)
+            
+            # Step 3: メモリーコンテキストがある場合は質問を拡張
             enhanced_query = user_query
             if memory_context:
                 enhanced_query = f"{user_query}\n\n【前回のコンテキスト】{memory_context}"
             
-            logger.info("💡 回答生成開始: クエリ='%s', 結果数=%d, メモリー=%s", user_query, len(search_results), bool(memory_context))
-            
-            # RunnableSequenceで回答生成 (最新LangChain API)
+            # Step 4: RunnableSequenceで回答生成 (最新LangChain API)
             result = self.chain.invoke({
                 "search_results": formatted_results,
                 "user_query": enhanced_query
             })
             
-            # AIMessageから文字列コンテンツを抽出
+            # Step 5: AIMessageから文字列コンテンツを抽出
             response = result.content if hasattr(result, 'content') else str(result)
             
-            # 参照元情報と深掘り提案を追加
-            enhanced_response = self._enhance_response_with_sources(response, search_results, user_query)
+            # Step 6: 参照元情報と深掘り提案を追加
+            enhanced_response = self._enhance_response_with_sources(response, enhanced_results, user_query)
             
-            logger.info("✅ 回答生成完了: 文字数=%d", len(enhanced_response))
+            # Step 7: コンテンツ強化の統計情報を追加
+            if enhanced_count > 0:
+                stats_info = f"\n\n---\n**コンテンツ取得状況**: {enhanced_count}/{len(search_results)}件で詳細ページ情報を取得し、より包括的な回答を提供"
+                enhanced_response += stats_info
+            
+            logger.info("✅ 回答生成完了: 文字数=%d, 強化件数=%d", len(enhanced_response), enhanced_count)
             return enhanced_response
             
         except Exception as e:
@@ -369,7 +383,7 @@ class ResponseGenerationAgent:
     
     def _format_search_results(self, search_results: List[Dict]) -> str:
         """
-        検索結果を読みやすい形式にフォーマット
+        検索結果を読みやすい形式にフォーマット（完全コンテンツ対応）
         
         Args:
             search_results: 検索結果リスト
@@ -383,22 +397,67 @@ class ResponseGenerationAgent:
         formatted_sections = []
         
         for i, result in enumerate(search_results, 1):
-            source = result.get('source', 'Unknown')
+            source = result.get('source', result.get('datasource', 'Unknown'))
             title = result.get('title', 'タイトルなし')
-            content = result.get('content', result.get('summary', ''))
+            
+            # コンテンツの優先順位: content > excerpt > summary
+            content = result.get('content')
+            if not content:
+                content = result.get('excerpt', '')
+            if not content:
+                content = result.get('summary', '')
+            
             url = result.get('url', '')
-            relevance_score = result.get('relevance_score', 0)
+            relevance_score = result.get('relevance_score', result.get('final_score', 0))
+            
+            # より詳細な情報を取得可能な場合は追加
+            created = result.get('created', '')
+            result_type = result.get('type', '')
+            space = result.get('space', '')
+            
+            # コンテンツが短すぎる場合の処理
+            if content and len(content) > 500:
+                # 長いコンテンツは適切に要約
+                content_preview = content[:500] + "..."
+                full_content_available = True
+            else:
+                content_preview = content
+                full_content_available = False
             
             section = f"""
 === 検索結果 {i} ===
 ソース: {source}
 タイトル: {title}
-関連度: {relevance_score:.2f}
-URL: {url}
+関連度: {relevance_score:.3f}"""
+            
+            # 追加メタデータ
+            if space:
+                section += f"\nスペース: {space}"
+            if result_type:
+                section += f"\nタイプ: {result_type}"
+            if created:
+                section += f"\n作成日: {created}"
+            
+            section += f"\nURL: {url}"
+            
+            section += f"""
 内容:
-{content}
-"""
+{content_preview}"""
+            
+            if full_content_available:
+                section += "\n\n※ さらに詳細な情報が利用可能です"
+            
             formatted_sections.append(section)
+        
+        # 検索結果サマリーを追加
+        summary_section = f"""
+=== 検索結果サマリー ===
+総件数: {len(search_results)}件
+平均関連度: {sum(result.get('relevance_score', result.get('final_score', 0)) for result in search_results) / len(search_results):.3f}
+主要ソース: {', '.join(set(result.get('source', result.get('datasource', 'Unknown')) for result in search_results))}
+"""
+        
+        formatted_sections.insert(0, summary_section)
         
         return "\n".join(formatted_sections)
     
@@ -442,3 +501,178 @@ URL: {url}
         except Exception as e:
             logger.error("❌ LLM接続検証失敗: %s", str(e))
             return False 
+
+    def _enhance_content_with_full_fetch(self, search_results: List[Dict]) -> List[Dict]:
+        """
+        検索結果の短い抜粋を実際のページ全文で補強
+        
+        Args:
+            search_results: 検索結果リスト
+            
+        Returns:
+            全文取得で強化された検索結果リスト
+        """
+        enhanced_results = []
+        
+        for result in search_results:
+            enhanced_result = result.copy()
+            
+            # excerptが短すぎる場合、実際のページ全文を取得を試行
+            current_content = result.get('content') or result.get('excerpt', '')
+            
+            if current_content and len(current_content) < 300:
+                # 全文取得を試行
+                full_content = self._fetch_full_page_content(result)
+                if full_content and len(full_content) > len(current_content):
+                    enhanced_result['content'] = full_content
+                    enhanced_result['content_enhanced'] = True
+                    logger.info(f"✅ 全文取得成功: {result.get('title', 'Unknown')} ({len(current_content)}→{len(full_content)}文字)")
+                else:
+                    enhanced_result['content_enhanced'] = False
+            else:
+                enhanced_result['content_enhanced'] = False
+            
+            enhanced_results.append(enhanced_result)
+        
+        return enhanced_results
+    
+    def _fetch_full_page_content(self, result: Dict) -> str:
+        """
+        個別ページの全文コンテンツを取得
+        
+        Args:
+            result: 検索結果辞書
+            
+        Returns:
+            ページ全文 (取得失敗時は空文字列)
+        """
+        try:
+            # Confluenceページの場合
+            if result.get('source') == 'confluence' or result.get('datasource') == 'confluence':
+                return self._fetch_confluence_page_content(result)
+            
+            # Jiraの場合
+            elif result.get('source') == 'jira' or result.get('datasource') == 'jira':
+                return self._fetch_jira_issue_content(result)
+            
+            else:
+                logger.warning(f"⚠️ 不明なソース形式: {result.get('source', result.get('datasource', 'Unknown'))}")
+                return ""
+                
+        except Exception as e:
+            logger.error(f"❌ 全文取得エラー: {e}")
+            return ""
+    
+    def _fetch_confluence_page_content(self, result: Dict) -> str:
+        """
+        Confluenceページの全文取得
+        
+        Args:
+            result: Confluence検索結果
+            
+        Returns:
+            ページ全文
+        """
+        try:
+            from atlassian import Confluence
+            
+            # API接続設定
+            confluence = Confluence(
+                url=f"https://{self.settings.atlassian_domain}",
+                username=self.settings.atlassian_email,
+                password=self.settings.atlassian_api_token
+            )
+            
+            # ページIDを取得
+            page_id = result.get('id')
+            if not page_id:
+                logger.warning("⚠️ ConfluenceページID不明")
+                return ""
+            
+            # ページ詳細を取得（body.storage形式）
+            page_content = confluence.get_page_by_id(
+                page_id, 
+                expand='body.storage,version,space'
+            )
+            
+            if page_content and 'body' in page_content:
+                storage_content = page_content['body']['storage']['value']
+                
+                # HTMLタグを除去してテキストのみ抽出
+                import re
+                clean_content = re.sub(r'<[^>]+>', '', storage_content)
+                clean_content = re.sub(r'\s+', ' ', clean_content).strip()
+                
+                return clean_content
+            else:
+                logger.warning("⚠️ Confluenceページコンテンツ取得失敗")
+                return ""
+                
+        except ImportError:
+            logger.warning("⚠️ atlassian-python-api not available")
+            return ""
+        except Exception as e:
+            logger.error(f"❌ Confluence全文取得エラー: {e}")
+            return ""
+    
+    def _fetch_jira_issue_content(self, result: Dict) -> str:
+        """
+        Jiraイシューの全文取得
+        
+        Args:
+            result: Jira検索結果
+            
+        Returns:
+            イシュー全文
+        """
+        try:
+            from atlassian import Jira
+            
+            # API接続設定
+            jira = Jira(
+                url=f"https://{self.settings.atlassian_domain}",
+                username=self.settings.atlassian_email,
+                password=self.settings.atlassian_api_token
+            )
+            
+            # イシューキーまたはIDを取得
+            issue_key = result.get('id') or result.get('key')
+            if not issue_key:
+                logger.warning("⚠️ JiraイシューID/キー不明")
+                return ""
+            
+            # イシュー詳細を取得
+            issue = jira.issue(issue_key, expand='renderedFields')
+            
+            if issue:
+                # 要約、説明、コメントを統合
+                content_parts = []
+                
+                # 要約
+                summary = issue.get('fields', {}).get('summary', '')
+                if summary:
+                    content_parts.append(f"要約: {summary}")
+                
+                # 説明
+                description = issue.get('fields', {}).get('description')
+                if description:
+                    content_parts.append(f"説明: {description}")
+                
+                # レンダリング済み説明があれば優先
+                rendered_desc = issue.get('renderedFields', {}).get('description')
+                if rendered_desc:
+                    import re
+                    clean_desc = re.sub(r'<[^>]+>', '', rendered_desc)
+                    content_parts.append(f"詳細説明: {clean_desc}")
+                
+                return "\n\n".join(content_parts)
+            else:
+                logger.warning("⚠️ Jiraイシューコンテンツ取得失敗")
+                return ""
+                
+        except ImportError:
+            logger.warning("⚠️ atlassian-python-api not available")
+            return ""
+        except Exception as e:
+            logger.error(f"❌ Jira全文取得エラー: {e}")
+            return "" 
