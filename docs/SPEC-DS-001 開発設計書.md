@@ -2,12 +2,13 @@
 
 | バージョン | ステータス | 作成日 | 参照ドキュメント |
 | :--- | :--- | :--- | :--- |
-| **v4.0** | **段階開発方針版** | 2025/01/17 | SPEC-PL-001 v3.6 |
+| **v4.1** | **Stage1完了・WBS更新版** | 2025/07/30 | SPEC-PL-001 v3.6 |
 
-**v4.0更新内容:**
-- 3段階開発方針の技術設計への反映
-- Stage 1: Confluence専用Agent設計に特化
-- ハイブリッドアーキテクチャの技術詳細更新
+**v4.1更新内容:**
+- Stage 1: Confluence専用Agent完成（100%達成）
+- エンタープライズ機能v2.5完全実装
+- WBS・ロードマップ・優先度マトリックス追加
+- 設定一元化完了、Stage 2開発準備完了
 
 ---
 
@@ -104,7 +105,7 @@
 
 ---
 
-## 5. WBS (Work Breakdown Structure) v2.5
+## 5. WBS (Work Breakdown Structure) v4.1
 
 ### 🎯 **Stage 1: Confluence専用Agent完成 (100%完了)** ✅
 
@@ -202,18 +203,18 @@
 
 ---
 
-## 7. 開発ロードマップ v2.5
+## 7. 開発ロードマップ v4.1
 
 ```mermaid
 gantt
     title 仕様書作成支援ボット開発ロードマップ
     dateFormat  YYYY-MM-DD
     section Stage 1 完成
-    設定一元化完了           :crit, active, s1-4, 2024-12-20, 0.5d
-    Stage1 リリース         :milestone, s1-rel, after s1-4, 0d
+    設定一元化完了           :done, s1-4, 2025-07-28, 2025-07-30
+    Stage1 リリース         :milestone, s1-rel, 2025-07-30, 0d
     
     section Stage 2 開発  
-    JQL最適化              :s2-1, after s1-rel, 2d
+    JQL最適化              :active, s2-1, 2025-07-31, 2d
     統合検索マージ          :s2-2, after s2-1, 3d
     複合フィルター          :s2-3, after s2-2, 2d
     Stage2 リリース         :milestone, s2-rel, after s2-3, 0d
@@ -264,4 +265,4 @@ gantt
 
 ---
 
-**最終更新**: v2.5.1 - Stage 1完了宣言、WBS・ロードマップ・優先度マトリックス追加、エンタープライズ機能・設定一元化100%完了
+**最終更新**: v4.1 (2025/07/30) - Stage 1完了宣言、WBS・ロードマップ・優先度マトリックス追加、エンタープライズ機能・設定一元化100%完了
