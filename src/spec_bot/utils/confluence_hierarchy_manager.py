@@ -51,8 +51,12 @@ class ConfluenceHierarchyManager:
         self.backup_file = self.data_dir / "confluence_hierarchy_backup.json"
         self.metadata_file = self.data_dir / "cache_metadata.json"
         
-        # 削除・廃止ページの検出パターン
-        self.deleted_patterns = ["【%%削除%%】", "【%%廃止%%】"]
+        # 削除・廃止ページの検出パターン（設定ファイルから読み込み）
+        try:
+            self.deleted_patterns = settings.hierarchy_exclusion_patterns
+        except:
+            # フォールバック: ハードコードされたパターン
+            self.deleted_patterns = ["【%%削除%%】", "【%%廃止%%】", "【%%クローズ%%】"]
         
         # バージョン情報
         self.version = "1.0"

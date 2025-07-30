@@ -9,6 +9,7 @@ import re
 import time
 from typing import List, Dict, Any, Callable, Optional, Tuple
 from dataclasses import dataclass, field
+from ..config.settings import settings
 
 
 @dataclass
@@ -216,11 +217,12 @@ class CQLSearchEngine:
                     combined_hierarchy = ' OR '.join(f'({condition})' for condition in hierarchy_conditions)
                     conditions.append(f'({combined_hierarchy})')
         
-        # 削除ページフィルタを追加
+        # 削除ページフィルタを追加（設定ファイルから読み込み）
         if not include_deleted:
-            # 削除・廃止マークのあるページを除外
-            conditions.append('title !~ "%%削除%%"')
-            conditions.append('title !~ "%%廃止%%"')
+            # 設定ファイルから除外パターンを取得
+            exclusion_patterns = settings.cql_exclusion_patterns
+            for pattern in exclusion_patterns:
+                conditions.append(f'title !~ "{pattern}"')
         
         # 全条件をAND条件で結合
         final_cql = ' AND '.join(conditions)

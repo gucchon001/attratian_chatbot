@@ -142,4 +142,16 @@ class Settings:
     def temporary_exclusion_keywords(self) -> list:
         """テスト・一時的キーワードリスト（【】内検索用）"""
         keywords_str = self._config.get('exclusion_filters', 'temporary_exclusion_keywords', fallback='テスト用,一時的,暫定,予定')
-        return [keyword.strip() for keyword in keywords_str.split(',') if keyword.strip()] 
+        return [keyword.strip() for keyword in keywords_str.split(',') if keyword.strip()]
+    
+    @property
+    def cql_exclusion_patterns(self) -> list:
+        """CQLクエリレベルでの直接除外パターンリスト（engine.pyで使用）"""
+        patterns_str = self._config.get('exclusion_filters', 'cql_exclusion_patterns', fallback='%%削除%%,%%廃止%%')
+        return [pattern.strip() for pattern in patterns_str.split(',') if pattern.strip()]
+    
+    @property
+    def hierarchy_exclusion_patterns(self) -> list:
+        """階層管理での除外パターンリスト（confluence_hierarchy_manager.pyで使用）"""
+        patterns_str = self._config.get('exclusion_filters', 'hierarchy_exclusion_patterns', fallback='【%%削除%%】,【%%廃止%%】,【%%クローズ%%】')
+        return [pattern.strip() for pattern in patterns_str.split(',') if pattern.strip()] 

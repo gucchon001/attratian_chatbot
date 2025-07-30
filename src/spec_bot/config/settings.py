@@ -98,6 +98,19 @@ class Settings:
     def validate_gemini_config(self) -> bool:
         """Gemini設定の検証"""
         return bool(self.gemini_api_key.strip())
+    
+    # 除外フィルター設定（CQL検索用）
+    @property
+    def cql_exclusion_patterns(self) -> list:
+        """CQLクエリレベルでの直接除外パターンリスト"""
+        patterns_str = self._config.get('exclusion_filters', 'cql_exclusion_patterns', fallback='%%削除%%,%%廃止%%')
+        return [pattern.strip() for pattern in patterns_str.split(',') if pattern.strip()]
+    
+    @property
+    def hierarchy_exclusion_patterns(self) -> list:
+        """階層管理での除外パターンリスト"""
+        patterns_str = self._config.get('exclusion_filters', 'hierarchy_exclusion_patterns', fallback='【%%削除%%】,【%%廃止%%】,【%%クローズ%%】')
+        return [pattern.strip() for pattern in patterns_str.split(',') if pattern.strip()]
 
 # グローバル設定インスタンス
 settings = Settings() 
