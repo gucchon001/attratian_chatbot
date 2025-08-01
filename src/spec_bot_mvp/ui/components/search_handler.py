@@ -2,9 +2,9 @@ import streamlit as st
 import logging
 from typing import Dict, Any
 
-from src.spec_bot_mvp.tools.hybrid_search_tool import HybridSearchTool
-from src.spec_bot_mvp.ui.components.thinking_process_ui import IntegratedThinkingProcessUI
-from src.spec_bot_mvp.agents.response_generator import ResponseGenerationAgent  # 変更: 全文取得対応版を使用
+from ...tools.hybrid_search_tool import HybridSearchTool
+from .thinking_process_ui import IntegratedThinkingProcessUI
+from ...agents.response_generator import ResponseGenerationAgent  # 変更: 全文取得対応版を使用
 
 logger = logging.getLogger(__name__)
 

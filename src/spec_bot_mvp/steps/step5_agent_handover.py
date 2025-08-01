@@ -18,9 +18,9 @@ sys.path.insert(0, str(project_root))
 
 # Agent機能（Phase 2で実装済み）
 try:
-    from src.spec_bot_mvp.agents.response_generator import ResponseGenerationAgent
-    from src.spec_bot_mvp.agents.fallback_searcher import FallbackSearchAgent
-    from src.spec_bot_mvp.agents.agent_selector import AgentSelector
+    from ..agents.response_generator import ResponseGenerationAgent
+from ..agents.fallback_searcher import FallbackSearchAgent
+from ..agents.agent_selector import AgentSelector
     AGENTS_AVAILABLE = True
 except ImportError:
     AGENTS_AVAILABLE = False

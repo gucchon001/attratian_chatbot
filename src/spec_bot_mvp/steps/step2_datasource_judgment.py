@@ -22,8 +22,8 @@ try:
 except ImportError:
     ChatGoogleGenerativeAI = None
 
-from src.spec_bot_mvp.config.settings import Settings
-from src.spec_bot_mvp.utils.prompt_loader import load_prompt
+from ..config.settings import Settings
+from ..utils.prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
