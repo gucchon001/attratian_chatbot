@@ -86,7 +86,7 @@ class DataSourceJudge:
     
     def judge_datasource(self, keyword_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        データソース判定を実行（仕様書準拠）
+        ハイブリッド型データソース判定を実行（ルールベース + Gemini）
         
         Args:
             keyword_result: Step1のキーワード抽出結果
@@ -94,16 +94,38 @@ class DataSourceJudge:
         Returns:
             判定結果辞書（仕様書準拠）
         """
-        logger.info(f"データソース判定開始（仕様書準拠）: {keyword_result.get('search_intent', 'unknown')}")
+        logger.info(f"ハイブリッド型データソース判定開始: {keyword_result.get('search_intent', 'unknown')}")
         
         # Step1結果の抽出
         primary_keywords = keyword_result.get("primary_keywords", [])
         search_intent = keyword_result.get("search_intent", "一般検索")
         
-        # 1. 重み付きマッチ計算（仕様書2.2.2）
-        datasource_scores = self._calculate_weighted_match(primary_keywords)
+        # Phase 1: 高速ルールベース判定
+        rule_based_result = self._calculate_weighted_match(primary_keywords)
+        rule_confidence = max(rule_based_result.values())
         
-        # 2. 動的閾値判定（複合キーワードで調整）
+        logger.info(f"ルールベース判定: Confluence={rule_based_result['confluence']:.2f}, Jira={rule_based_result['jira']:.2f}, 最高信頼度={rule_confidence:.2f}")
+        
+        # Phase 2: 信頼度チェックとGemini判定
+        if rule_confidence >= 0.8:
+            # 高信頼度：ルールベース結果を採用（高速）
+            datasource_scores = rule_based_result
+            judgment_method = "rule_based_high_confidence"
+            logger.info(f"✅ 高信頼度ルールベース判定採用: {judgment_method}")
+        else:
+            # 低信頼度：Gemini文脈理解判定
+            gemini_result = self._gemini_datasource_judgment(primary_keywords, search_intent)
+            if gemini_result:
+                datasource_scores = self._integrate_judgments(rule_based_result, gemini_result)
+                judgment_method = "hybrid_gemini_enhanced"
+                logger.info(f"🤖 Gemini強化判定採用: {judgment_method}")
+            else:
+                # Gemini失敗時：ルールベースフォールバック
+                datasource_scores = rule_based_result
+                judgment_method = "rule_based_fallback"
+                logger.warning(f"⚠️ Gemini判定失敗、ルールベース採用: {judgment_method}")
+        
+        # 3. 閾値判定（動的調整）
         keywords_str = " ".join(primary_keywords).lower()
         if any(pattern in keywords_str for pattern in ["機能.*詳細", "機能.*仕様", ".*仕様.*詳細"]):
             threshold = 0.7  # 複合キーワードは厳格
@@ -113,13 +135,13 @@ class DataSourceJudge:
             threshold = 0.4  # 一般クエリ
         selected_datasources = self._apply_threshold_selection(datasource_scores, threshold=threshold)
         
-        # 3. Geminiによる検索用キーワード最適化（仕様書2.2.3）
+        # 4. Geminiによる検索用キーワード最適化（仕様書2.2.3）
         optimized_keywords = self._optimize_keywords_with_gemini(primary_keywords, selected_datasources)
         
-        # 4. データソース優先順序決定（選択されたデータソースのみ）
+        # 5. データソース優先順序決定（選択されたデータソースのみ）
         datasource_priority = sorted(selected_datasources, key=lambda x: datasource_scores[x], reverse=True)
         
-        # 5. 判定理由生成
+        # 6. 判定理由生成
         reasoning = self._generate_reasoning_spec_compliant(
             primary_keywords, datasource_scores, selected_datasources, search_intent
         )
@@ -129,12 +151,13 @@ class DataSourceJudge:
             "priority_scores": datasource_scores,
             "selected_datasources": selected_datasources,
             "judgment_reasoning": reasoning,
+            "judgment_method": judgment_method,  # 判定手法を追加
             "optimized_keywords": optimized_keywords,
             "original_keywords": primary_keywords,
             "keywords_removed": self._get_removed_keywords(primary_keywords, optimized_keywords)
         }
         
-        logger.info(f"データソース判定完了（仕様書準拠）: {selected_datasources} (最高スコア: {max(datasource_scores.values()):.2f})")
+        logger.info(f"ハイブリッド判定完了 [{judgment_method}]: {selected_datasources} (最高スコア: {max(datasource_scores.values()):.2f})")
         return result
     
     def _calculate_weighted_match(self, keywords: List[str]) -> Dict[str, float]:
@@ -300,4 +323,93 @@ class DataSourceJudge:
         # 検索意図
         reasoning_parts.append(f"検索意図: {intent}")
         
-        return " | ".join(reasoning_parts) 
+        return " | ".join(reasoning_parts)
+    
+    def _gemini_datasource_judgment(self, keywords: List[str], search_intent: str) -> Dict[str, float]:
+        """
+        Geminiによるデータソース判定（既存プロンプト活用）
+        
+        Args:
+            keywords: 抽出されたキーワード
+            search_intent: 検索意図
+            
+        Returns:
+            Gemini判定スコア辞書 or None（失敗時）
+        """
+        if not self.gemini_available:
+            logger.warning("Gemini利用不可、Gemini判定をスキップ")
+            return None
+        
+        try:
+            # 既存プロンプトの活用
+            prompt = load_prompt(
+                "analysis_steps",
+                "step2_datasource_judgment", 
+                "datasource_confidence_judgment",
+                keywords=keywords,
+                search_intent=search_intent
+            )
+            
+            logger.info(f"🤖 Gemini文脈判定実行: キーワード={keywords}, 意図={search_intent}")
+            response = self.llm.invoke(prompt)
+            
+            # JSON解析
+            import json
+            json_start = response.content.find('{')
+            json_end = response.content.rfind('}') + 1
+            json_str = response.content[json_start:json_end]
+            
+            result = json.loads(json_str)
+            
+            # 結果の抽出と検証
+            confluence_conf = float(result.get("confluence_confidence", 0.5))
+            jira_conf = float(result.get("jira_confidence", 0.5))
+            reasoning = result.get("reasoning", "Gemini判定")
+            
+            # 正規化
+            total = confluence_conf + jira_conf
+            if total > 0:
+                confluence_conf = confluence_conf / total
+                jira_conf = jira_conf / total
+            
+            gemini_scores = {
+                "confluence": confluence_conf,
+                "jira": jira_conf
+            }
+            
+            logger.info(f"✅ Gemini判定完了: Confluence={confluence_conf:.2f}, Jira={jira_conf:.2f}")
+            logger.info(f"📝 Gemini判定理由: {reasoning}")
+            
+            return gemini_scores
+            
+        except Exception as e:
+            logger.error(f"❌ Gemini判定エラー: {e}")
+            return None
+    
+    def _integrate_judgments(self, rule_scores: Dict[str, float], gemini_scores: Dict[str, float]) -> Dict[str, float]:
+        """
+        ルールベースとGemini判定の統合
+        
+        Args:
+            rule_scores: ルールベース判定スコア
+            gemini_scores: Gemini判定スコア
+            
+        Returns:
+            統合判定スコア
+        """
+        # 重み付き統合（Gemini優先だが、ルールベースも考慮）
+        rule_weight = 0.3  # ルールベース重み
+        gemini_weight = 0.7  # Gemini重み
+        
+        integrated_scores = {}
+        for datasource in ["confluence", "jira"]:
+            integrated_score = (
+                rule_scores[datasource] * rule_weight + 
+                gemini_scores[datasource] * gemini_weight
+            )
+            integrated_scores[datasource] = integrated_score
+        
+        logger.info(f"🔗 判定統合完了: ルール重み={rule_weight}, Gemini重み={gemini_weight}")
+        logger.info(f"📊 統合結果: Confluence={integrated_scores['confluence']:.2f}, Jira={integrated_scores['jira']:.2f}")
+        
+        return integrated_scores 
