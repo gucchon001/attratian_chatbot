@@ -26,10 +26,10 @@ except ImportError as e:
     SPEC_BOT_AVAILABLE = False
 
 try:
-    from src.spec_bot_mvp.tools.hybrid_search_tool import HybridSearchTool
-    from src.spec_bot_mvp.config.settings import Settings
-    from src.spec_bot_mvp.ui.components.thinking_process_ui import IntegratedThinkingProcessUI
-    from src.spec_bot_mvp.ui.components.search_handler import execute_integrated_search_with_progress
+    from ..tools.hybrid_search_tool import HybridSearchTool
+    from ..config.settings import Settings
+    from .components.thinking_process_ui import IntegratedThinkingProcessUI
+    from .components.search_handler import execute_integrated_search_with_progress
     SPEC_BOT_MVP_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ spec_bot_mvp モジュールのインポートに失敗: {e}")

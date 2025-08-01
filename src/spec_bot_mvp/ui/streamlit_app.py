@@ -17,14 +17,14 @@ import sys
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.spec_bot_mvp.tools.hybrid_search_tool import HybridSearchTool
-from src.spec_bot_mvp.config.settings import Settings
-from src.spec_bot_mvp.steps.step1_keyword_extraction import KeywordExtractor
-from src.spec_bot_mvp.steps.step2_datasource_judgment import DataSourceJudgment
-from src.spec_bot_mvp.steps.step3_cql_search import CQLSearchEngine
-from src.spec_bot_mvp.steps.step4_quality_evaluation import QualityEvaluator
-from src.spec_bot_mvp.steps.step5_agent_handover import AgentHandover
-from src.spec_bot_mvp.ui.components.thinking_process_ui import IntegratedThinkingProcessUI
+from ..tools.hybrid_search_tool import HybridSearchTool
+from ..config.settings import Settings
+from ..steps.step1_keyword_extraction import KeywordExtractor
+from ..steps.step2_datasource_judgment import DataSourceJudgment
+from ..steps.step3_cql_search import CQLSearchEngine
+from ..steps.step4_quality_evaluation import QualityEvaluator
+from ..steps.step5_agent_handover import AgentHandover
+from .components.thinking_process_ui import IntegratedThinkingProcessUI
 
 logger = logging.getLogger(__name__)
 
@@ -351,7 +351,7 @@ def main():
                     
                     if ranked_results:
                         # Step5: 回答生成実行
-                        from src.spec_bot_mvp.agents.response_generator import ResponseGenerationAgent
+                        from ...agents.response_generator import ResponseGenerationAgent
                         
                         try:
                             response_agent = ResponseGenerationAgent()

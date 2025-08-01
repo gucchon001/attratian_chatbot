@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 # 実際のAPI接続クライアント
 try:
-    from src.spec_bot_mvp.utils.atlassian_api_client import AtlassianAPIClient
-    from src.spec_bot_mvp.config.settings import Settings
+    from ..utils.atlassian_api_client import AtlassianAPIClient
+    from ..config.settings import Settings
     ATLASSIAN_CLIENT_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Atlassian APIクライアントのインポートに失敗: {e}")
@@ -42,7 +42,7 @@ class CQLSearchEngine:
     
     def _init_api_client(self):
         """API接続クライアント初期化と接続テスト"""
-        from src.spec_bot_mvp.config.settings import Settings
+        from ..config.settings import Settings
         
         self.settings = Settings()
         self.api_client = None
