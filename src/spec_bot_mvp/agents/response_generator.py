@@ -25,7 +25,7 @@ try:
 except ImportError:
     LANGCHAIN_AVAILABLE = False
 
-from src.spec_bot_mvp.config.settings import Settings
+from ..config.settings import Settings
 
 logger = logging.getLogger(__name__)
 

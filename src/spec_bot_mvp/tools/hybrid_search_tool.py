@@ -16,10 +16,10 @@ import sys
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.spec_bot_mvp.steps.step1_keyword_extraction import KeywordExtractor
-from src.spec_bot_mvp.steps.step2_datasource_judgment import DataSourceJudge
-from src.spec_bot_mvp.steps.step3_cql_search import CQLSearchEngine
-from src.spec_bot_mvp.steps.step4_quality_evaluation import QualityEvaluator
+from ..steps.step1_keyword_extraction import KeywordExtractor
+from ..steps.step2_datasource_judgment import DataSourceJudge
+from ..steps.step3_cql_search import CQLSearchEngine
+from ..steps.step4_quality_evaluation import QualityEvaluator
 
 logger = logging.getLogger(__name__)
 
