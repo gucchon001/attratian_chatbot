@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 # Gemini AI クライアント
 try:
     import google.generativeai as genai
-    from src.spec_bot_mvp.config.settings import Settings
-    from src.spec_bot_mvp.utils.prompt_loader import load_prompt
+    from ...config.settings import Settings
+from ...utils.prompt_loader import load_prompt
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False

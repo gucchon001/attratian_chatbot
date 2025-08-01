@@ -26,8 +26,8 @@ try:
 except ImportError:
     LANGCHAIN_AVAILABLE = False
 
-from src.spec_bot_mvp.config.settings import Settings
-from src.spec_bot_mvp.utils.atlassian_api_client import AtlassianAPIClient
+from ..config.settings import Settings
+from ..utils.atlassian_api_client import AtlassianAPIClient
 
 logger = logging.getLogger(__name__)
 
