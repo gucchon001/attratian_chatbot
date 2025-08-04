@@ -156,7 +156,14 @@ class CQLSearchEngine:
             "DB": ["データベース", "database"],
             "テスト": ["test", "testing", "検証", "verification"],
             "仕様": ["spec", "specification", "要件"],
-            "設計": ["design", "アーキテクチャ", "architecture"]
+            "設計": ["design", "アーキテクチャ", "architecture"],
+            # 🆕 重要: ユーザー関連の同義語追加
+            "ユーザー": ["会員", "エンドユーザー", "user", "メンバー"],
+            "会員": ["ユーザー", "エンドユーザー", "user", "メンバー"],
+            "登録": ["新規登録", "signup", "register", "作成", "追加"],
+            "新規登録": ["登録", "signup", "register", "作成"],
+            "制限": ["条件", "制約", "constraint", "limit", "limitation", "restriction"],
+            "条件": ["制限", "制約", "constraint", "要件", "requirement"]
         }
         
         # 汎用語（ストップワード）- OR検索で除外すべき単語
@@ -461,8 +468,18 @@ class CQLSearchEngine:
             # NEAR検索では汎用語を含めても問題ない
             return primary_keywords + secondary_keywords[:2]
         elif strategy_id == "strategy3":  # 本文厳密検索
-            # AND検索では汎用語を含めても問題ない
-            return primary_keywords + secondary_keywords[:2]
+            # AND検索では汎用語を含めても問題ない + 同義語展開
+            base_keywords = primary_keywords + secondary_keywords[:2]
+            
+            # 🆕 本文検索でも同義語展開を実行（NotebookLM級の検索精度を実現）
+            expanded = base_keywords.copy()
+            for keyword in base_keywords:
+                synonyms = self.synonym_dict.get(keyword, [])
+                for synonym in synonyms[:2]:  # 類義語2つまで（本文検索では余裕を持つ）
+                    if synonym not in expanded:
+                        expanded.append(synonym)
+            
+            return expanded[:6]  # 最大6キーワードに制限（本文検索では多めに）
         elif strategy_id == "strategy4":  # 補完OR検索
             # OR検索では汎用語を除外（重要！）
             filtered_keywords = []
